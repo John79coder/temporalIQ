@@ -1,0 +1,185 @@
+# app/scheduling/routes/api.py
+from flask import Blueprint, request, jsonify, g, current_app
+from pydantic import ValidationError as PydanticValidationError
+from sqlalchemy.exc import SQLAlchemyError
+from app.utils.endpoint_utils import verify_jwt, csrf_protected
+from app.utils.exceptions import DataValidationError, CalendarError, DatabaseError, make_handled_error_response, \
+    ServiceUnavailableError, wrap_external_error
+from app.scheduling.models.schemas import SchedulePreviewIn, TimeBlockOut, ScheduleConfirmIn, TimeBlockIn
+from app.icloud.models.schemas import EventWriteRequest
+from app.scheduling.models.entities import Task, TimeBlock
+from app.features.models.entities import AITrainingEvent
+from app.features.services.ai_data_service import AIDataService
+from app.utils.logging_service import LoggingService
+from app.features.models.schemas import SlotChoiceInput, SlotChoiceLabel, DurationLogInput, DurationLogLabel
+from werkzeug.exceptions import BadRequest
+from tenacity import retry, stop_after_attempt, wait_exponential
+from typing import List
+from sqlalchemy.orm import Session
+
+from app.utils.exceptions import AppError
+
+
+class RollbackError(DatabaseError):
+    """Raised when rollback fails for iCloud events."""
+    pass
+
+bp = Blueprint("scheduling", __name__, url_prefix="/scheduling")
+
+@verify_jwt
+@csrf_protected
+@bp.route("/preview", methods=["POST"])
+def preview_schedule():
+    """Generate a preview of time blocks for scheduling."""
+    try:
+        json_data = request.get_json()
+        schedule_preview_input = SchedulePreviewIn(**json_data)
+    except (BadRequest, PydanticValidationError) as e:
+        logging_service = current_app.extensions['app_context'].get_service('logging_service')
+        logging_service.error("Invalid input for schedule preview", user_id=None, extra={"error": str(e)})
+        return make_handled_error_response(DataValidationError, str(e), 400)
+    try:
+        time_blocks = current_app.extensions['app_context'].get_service('time_block_generator').generate_time_blocks(
+            schedule_preview_input.user_id,
+            g.db,
+            schedule_preview_input.notion_db_id,
+            schedule_preview_input.calendar_id,
+            schedule_preview_input.start_date,
+            schedule_preview_input.end_date,
+            schedule_preview_input.earliest_time,
+            schedule_preview_input.latest_time
+        )
+        return jsonify(
+            {"time_blocks": [TimeBlockOut.model_validate(tb).model_dump(mode="json") for tb in time_blocks]}
+        )
+    except (CalendarError, DatabaseError, ServiceUnavailableError) as e:
+        logging_service = current_app.extensions['app_context'].get_service('logging_service')
+        logging_service.error("Failed to generate schedule preview", user_id=schedule_preview_input.user_id, extra={"error": str(e)})
+        return make_handled_error_response(type(e), str(e), 500)
+    except Exception as e:
+        logging_service = current_app.extensions['app_context'].get_service('logging_service')
+        logging_service.error("Unexpected error in schedule preview", user_id=schedule_preview_input.user_id, extra={"error": str(e)})
+        return make_handled_error_response(AppError, str(e), 500)
+
+@bp.route("/confirm", methods=["POST"])
+@verify_jwt
+@csrf_protected
+def confirm_schedule():
+    """Confirm and write scheduled time blocks to iCloud."""
+    logging_service = current_app.extensions['app_context'].get_service('logging_service')
+    try:
+        json_data = request.get_json()
+        data = ScheduleConfirmIn(**json_data)
+    except (BadRequest, PydanticValidationError) as e:
+        logging_service.error("Invalid input for schedule confirm", user_id=None, extra={"error": str(e)})
+        return make_handled_error_response(DataValidationError, str(e), 400)
+
+    event_service = current_app.extensions['app_context'].get_service('event_service')
+    ai_data_service = current_app.extensions['app_context'].get_service('ai_data_service')
+    uids = []
+    try:
+        tasks = g.db.query(Task).filter(Task.user_id == data.user_id, Task.id.in_([tb.task_id for tb in data.time_blocks if tb.task_id])).all()
+        task_map = {task.id: task for task in tasks}
+        uids = _write_events(g.db, data.user_id, data.calendar_id, data.time_blocks, task_map, event_service, logging_service)
+        _log_training_events(g.db, data.user_id, data.time_blocks, task_map, ai_data_service, logging_service)
+        g.db.commit()
+        return jsonify({"message": "Schedule confirmed and written to iCloud."}), 200
+    except (CalendarError, DatabaseError, ServiceUnavailableError, SQLAlchemyError, ValueError) as e:
+        _rollback_on_failure(g.db, data.user_id, data.calendar_id, uids, event_service, logging_service)
+        logging_service.error("Failed to confirm schedule", user_id=data.user_id, extra={"error": str(e), "block_count": len(data.time_blocks), "task_count": len(task_map)})
+        return make_handled_error_response(type(e), str(e), 500)
+    except Exception as e:
+        _rollback_on_failure(g.db, data.user_id, data.calendar_id, uids, event_service, logging_service)
+        logging_service.error("Unexpected error in schedule confirm", user_id=data.user_id, extra={"error": str(e), "block_count": len(data.time_blocks), "task_count": len(task_map)})
+        return make_handled_error_response(AppError, str(e), 500)
+
+@staticmethod
+@retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
+def _delete_event_with_retry(client, calendar_id: str, uid: str, logging_service: LoggingService, user_id: int):
+    """Retry deleting an event from iCloud."""
+    client.delete_event(calendar_id, uid)
+    logging_service.info("Rollback: Deleted event", user_id=user_id, extra={"uid": uid, "calendar_id": calendar_id})
+
+@staticmethod
+def _write_events(db: Session, user_id: int, calendar_id: str, blocks: List[TimeBlockIn], task_map: dict, event_service, logging_service: LoggingService) -> List[str]:
+    """Write events to iCloud calendar."""
+    uids = []
+    for block in blocks:
+        if block.task_id and block.task_id in task_map:
+            task = task_map[block.task_id]
+            try:
+                event = EventWriteRequest(
+                    title=task.title,
+                    start=block.start,
+                    end=block.end,
+                    notes=f"Task: {task.title}",
+                    uid=None
+                )
+                uid = event_service.write_scheduled_event(user_id, db, calendar_id, event)
+                uids.append(uid)
+            except (CalendarError, DatabaseError) as e:
+                logging_service.error("Failed to write event", user_id=user_id, task_id=block.task_id, extra={"error": str(e)})
+                raise
+    return uids
+
+@staticmethod
+def _log_training_events(db: Session, user_id: int, blocks: List[TimeBlockIn], task_map: dict, ai_data_service: AIDataService, logging_service: LoggingService):
+    """Log slot choice and duration events to AI training data."""
+    """Log slot choice and duration events to AI training data."""
+    try:
+        for block in blocks:
+            if block.task_id and block.task_id in task_map:
+                task = task_map[block.task_id]
+                duration = (block.end - block.start).total_seconds() / 60
+                events = [
+                    AITrainingEvent(
+                        user_id=user_id,
+                        task_id=task.id,
+                        event_type='slot_choice',
+                        input_json=SlotChoiceInput(
+                            slot_start=block.start.isoformat(),
+                            urgency=task.priority,
+                            duration=duration
+                        ).model_dump(),
+                        label_json=SlotChoiceLabel(selected=True).model_dump(),
+                        source='user_confirm'
+                    ),
+                    AITrainingEvent(
+                        user_id=user_id,
+                        task_id=task.id,
+                        event_type='duration_log',
+                        input_json=DurationLogInput(
+                            num_events=len(task_map),
+                            day_length_hours=current_app.extensions['app_context'].get_service('free_time_finder')._get_work_hours(db, user_id),
+                            urgency=task.priority or 0.0
+                        ).model_dump(),
+                        label_json=DurationLogLabel(duration_minutes=duration).model_dump(),
+                        source='user_confirm'
+                    )
+                ]
+                for event in events:
+                    ai_data_service.log_event(db, event)
+    except SQLAlchemyError as e:
+        logging_service.error("Failed to log training events", user_id=user_id, task_id=block.task_id if block.task_id else None, extra={"error": str(e)})
+        raise wrap_external_error(e, DatabaseError, "Failed to log training events") from e
+    except ValueError as e:
+        logging_service.error("Invalid training event data", user_id=user_id, task_id=block.task_id if block.task_id else None, extra={"error": str(e)})
+        raise wrap_external_error(e, DataValidationError, "Invalid training event data") from e
+
+
+
+
+@staticmethod
+def _rollback_on_failure(db: Session, user_id: int, calendar_id: str, uids: List[str], event_service, logging_service: LoggingService):
+    """Rollback iCloud events on failure."""
+    client = event_service.client_manager.get_caldav_client_for_user(db, user_id)
+    failed_rollbacks = []
+    for uid in uids:
+        try:
+            confirm_schedule._delete_event_with_retry(client, calendar_id, uid, logging_service, user_id)
+        except (CalendarError, ServiceUnavailableError) as del_e:
+            logging_service.error("Rollback failed for event", user_id=user_id, extra={"error": str(del_e), "uid": uid})
+            failed_rollbacks.append(uid)
+    if failed_rollbacks:
+        logging_service.error("Incomplete rollback, some events may persist", user_id=user_id, extra={"failed_uids": failed_rollbacks})
+        raise RollbackError(f"Failed to rollback all events: {failed_rollbacks}") from None

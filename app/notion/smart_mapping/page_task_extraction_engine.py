@@ -1,0 +1,257 @@
+from app.notion.smart_mapping.sectionizer import Sectionizer, BlockSection
+from app.notion.smart_mapping.page_value_extractors.title_extractor import TitleExtractor
+from app.notion.smart_mapping.page_value_extractors.urgency_classifier import UrgencyClassifier
+from app.notion.smart_mapping.page_value_extractors.completion_extractor import CompletionExtractor
+from app.notion.smart_mapping.page_value_extractors.tag_extractor import TagExtractor
+from app.notion.smart_mapping.page_value_extractors.description_extractor import DescriptionExtractor
+from app.notion.smart_mapping.detector_registry import DetectorRegistry
+from app.notion.smart_mapping.field_detector_aggregator import FieldDetectorAggregator
+from app.utils.caching import ICacheService
+from app.features.services.service import FeaturesService
+from sqlalchemy.orm import Session
+from typing import Dict
+from app.notion.smart_mapping.models import TaskCandidateData
+from concurrent.futures import ThreadPoolExecutor, as_completed
+import logging
+from flask import current_app
+
+from app.notion.models.schemas import PartialCandidate
+from app.notion.smart_mapping.page_value_extractors.due_date_extractor import DueDateExtractor
+from app.notion.smart_mapping.page_value_extractors.duration_extractor import DurationExtractor
+from app.notion.smart_mapping.page_value_extractors.priority_extractor import PriorityExtractor
+
+
+import re
+from typing import List
+from app.notion.smart_mapping.models import FieldMatch  # Adjust as needed
+from app.notion.smart_mapping.partial_candidate_stitcher import PageAggregator
+from app.user_preferences.preferences_store.service import PreferencesService
+
+
+class PageTaskExtractionEngine:
+    def __init__(self, caching_service: ICacheService, features_service: FeaturesService, preferences_service: PreferencesService):
+        self.caching_service = caching_service
+        self.features_service = features_service
+        self.sectionizer = Sectionizer()
+        self.aggregator = PageAggregator(preferences_service)
+        # Initialize registry with all extractors (reusing codebase patterns)
+        self.registry = DetectorRegistry(features_service, None, None)  # Reuse base registry
+        self._register_extractors()
+        self.extractor_aggregator = FieldDetectorAggregator(self.registry)
+
+    def _register_extractors(self):
+        """Register all page value extractors."""
+        self.registry.register_detector(TitleExtractor(self.features_service))
+        self.registry.register_detector(DueDateExtractor(self.features_service))
+        self.registry.register_detector(PriorityExtractor(self.features_service))
+        self.registry.register_detector(DurationExtractor(self.features_service))
+        self.registry.register_detector(UrgencyClassifier(self.features_service))
+        self.registry.register_detector(CompletionExtractor(self.features_service))
+        self.registry.register_detector(TagExtractor(self.features_service))
+        self.registry.register_detector(DescriptionExtractor(self.features_service))
+
+    def generate_candidates(self, blocks: List[Dict], db: Session, user_id: int, page_id: str) -> List[TaskCandidateData]:
+        settings = self.features_service.get_settings(db, user_id)
+        if not settings.use_ai_page_extraction:
+            return []  # Or fallback to basic extraction if needed
+
+        sections = self.sectionizer.segment(blocks)
+        partials = []
+        app = current_app._get_current_object()  # For threading
+
+        with ThreadPoolExecutor(max_workers=8) as ex:  # Parallel per section
+
+            futures = [ex.submit(self._extract_from_section, section, db, user_id, app) for section in sections]
+
+            for future in as_completed(futures):
+                try:
+                    partials.append(future.result())
+                except Exception as e:
+                    logging.error(f"Extraction failed for section: {str(e)}")
+
+
+
+        candidates = self.aggregator.aggregate(partials, user_id, page_id, db)
+        return candidates
+
+    def _extract_from_section(self, section: BlockSection, db: Session, user_id: int, app) -> List[PartialCandidate]:
+        with app.app_context():
+            partials: List[PartialCandidate] = []
+            extraction_order = 0
+
+            for block_index in range(len(section.blocks)):
+                block = section.blocks[block_index]
+                raw_text = self._extract_text_from_block(block)
+                remaining_text = raw_text
+                span_index = 0
+
+                while remaining_text:
+                    # Create a single PartialCandidate per span
+                    partial = PartialCandidate(confidence=0.5)
+                    total_conf = 0.0
+                    count = 0
+
+                    # Run each extractor on the block text
+                    for extractor in self.registry.get_detectors():  # Detectors are PageValueExtractor instances
+                        extracted = extractor.extract([self._block_from_text(remaining_text)], db, user_id)
+                        # Merge fields from extracted PartialCandidate
+                        if extracted.title:
+                            partial.title = extracted.title
+                        if extracted.due_date:
+                            partial.due_date = extracted.due_date
+                        if extracted.description:
+                            partial.description = extracted.description
+                        if extracted.duration:
+                            partial.duration = extracted.duration
+                        if extracted.priority:
+                            partial.priority = extracted.priority
+                        if extracted.status:
+                            partial.status = extracted.status
+                        if extracted.tags:
+                            partial.tags = extracted.tags
+                        if extracted.urgency:
+                            partial.urgency = extracted.urgency
+                        if extracted.confidence:
+                            total_conf += extracted.confidence
+                            count += 1
+
+                    # Calculate average confidence
+                    partial.confidence = total_conf / count if count > 0 else 0.5
+
+                    # Assign structural metadata
+                    partial.block_id = block.get("id")
+                    partial.block_index = block_index
+                    partial.span_index = span_index
+                    partial.extraction_order = extraction_order
+
+                    # Only append if at least one field was set
+                    if any([partial.title, partial.due_date, partial.description, partial.duration,
+                            partial.priority, partial.status, partial.tags, partial.urgency != 0.5]):
+                        partials.append(partial)
+
+                    # Remove matched text spans
+                    remaining_text = self._remove_matched_spans(remaining_text, partial)
+
+                    # Break if no fields were extracted
+                    if not any([partial.title, partial.due_date, partial.description, partial.duration,
+                                partial.priority, partial.status, partial.tags, partial.urgency != 0.5]):
+                        break
+
+                    span_index += 1
+                    extraction_order += 1
+
+            return partials
+
+    def _remove_matched_spans(self, text: str, partial: PartialCandidate) -> str:
+        """
+        Remove substrings from `text` that correspond to fields in the PartialCandidate.
+        Attempts exact match removal first. If overlapping spans, removes largest first.
+        """
+        spans = []
+        # Collect spans for all non-None fields
+        for field in ['title', 'description', 'priority', 'status']:
+            value = getattr(partial, field, None)
+            if value and isinstance(value, str):
+                pattern = re.escape(value)
+                for m in re.finditer(pattern, text):
+                    spans.append((m.start(), m.end()))
+                    break  # Only first occurrence
+        # Tags are a list
+        if partial.tags:
+            for tag in partial.tags:
+                pattern = re.escape(tag)
+                for m in re.finditer(pattern, text):
+                    spans.append((m.start(), m.end()))
+                    break
+        # Due date (if stringified in text)
+        if partial.due_date and isinstance(partial.due_date, str):
+            pattern = re.escape(partial.due_date)
+            for m in re.finditer(pattern, text):
+                spans.append((m.start(), m.end()))
+                break
+        # Duration (if stringified, e.g., "2 hours")
+        if partial.duration:
+            # Approximate duration string (e.g., "2 hours" or "120 minutes")
+            duration_str = f"{partial.duration} minutes" if partial.duration < 60 else f"{partial.duration // 60} hours"
+            pattern = re.escape(duration_str)
+            for m in re.finditer(pattern, text):
+                spans.append((m.start(), m.end()))
+                break
+
+        if not spans:
+            return text
+
+        # Merge and sort spans to avoid overlaps
+        spans.sort()
+        cleaned_spans = []
+        last_end = -1
+        for start, end in spans:
+            if start >= last_end:
+                cleaned_spans.append((start, end))
+                last_end = end
+
+        # Remove spans from text
+        new_text = text
+        for start, end in reversed(cleaned_spans):
+            new_text = new_text[:start] + new_text[end:]
+
+        # Cleanup: collapse double spaces, strip
+        new_text = re.sub(r'\s{2,}', ' ', new_text).strip()
+        return new_text
+
+    def _block_from_text(self, text: str) -> dict:
+        return {
+            "type": "paragraph",
+            "text": [{"plain_text": text}]
+        }
+
+    def _extract_text_from_block(block: dict) -> str:
+        """
+        Extracts plain text content from a Notion block.
+        Looks into standard rich_text-bearing fields like paragraph, to_do, heading_1, etc.
+        """
+        if not isinstance(block, dict):
+            return ""
+
+        for block_type in ['paragraph', 'to_do', 'heading_1', 'heading_2', 'heading_3', 'bulleted_list_item',
+                           'numbered_list_item']:
+            if block.get('type') == block_type:
+                rich_text = block.get(block_type, {}).get('rich_text', [])
+                return "".join([rt.get('plain_text', '') for rt in rich_text]).strip()
+
+        return ""
+
+    def _remove_matched_spans(self, text: str, matches: list[FieldMatch]) -> str:
+        """
+        Remove substrings from `text` that are matched by extractors.
+        Attempts exact match removal first. If overlapping spans, removes largest first.
+        """
+
+        # Track match spans by locating them in the text
+        spans = []
+        for match in matches:
+            pattern = re.escape(match.value)
+            for m in re.finditer(pattern, text):
+                spans.append((m.start(), m.end()))
+                break  # Only the first occurrence per match to avoid over-deleting
+
+        if not spans:
+            return text  # Nothing found to remove
+
+        # Merge and sort spans to avoid overlaps
+        spans.sort()  # sort by start position
+        cleaned_spans = []
+        last_end = -1
+        for start, end in spans:
+            if start >= last_end:
+                cleaned_spans.append((start, end))
+                last_end = end
+
+        # Remove spans from text by walking backwards
+        new_text = text
+        for start, end in reversed(cleaned_spans):
+            new_text = new_text[:start] + new_text[end:]
+
+        # Cleanup: collapse double spaces, strip
+        new_text = re.sub(r'\s{2,}', ' ', new_text).strip()
+        return new_text

@@ -1,4 +1,5 @@
 # app/scheduling/services/time_block_generator.py
+import os
 from typing import List, Tuple, Optional
 from datetime import datetime, timedelta
 from sqlalchemy.orm import Session
@@ -16,7 +17,7 @@ from app.features.models.entities import AITrainingEvent, UserAISettings
 from app.utils.exceptions import DatabaseError, wrap_external_error
 from app.utils.logging_service import LoggingService
 from app.features.models.schemas import UrgencyFeedbackInput, UrgencyFeedbackLabel
-from flask import g
+from flask import g, current_app
 import re
 from transformers import pipeline
 
@@ -36,7 +37,11 @@ class TimeBlockGenerator(ITimeBlockGenerator):
         self.task_candidate_repo = TaskCandidateRepository()
         self.nlp = None
         try:
-            self.nlp = pipeline("text-classification", model="KS-Vijay/urgency-model-aura")
+
+            model_dir = current_app.config.get("MODEL_DIR", ".")
+            model_path = os.path.join(model_dir, "KS-Vijay_urgency-model-aura")
+            self.nlp = pipeline("text-classification", model=model_path, local_files_only=True)
+
         except Exception as e:
             import traceback
 

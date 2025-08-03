@@ -23,8 +23,9 @@ class UrgencyClassifier(PageValueExtractor):
             if self.nlp is None:
 
                 model_dir = current_app.config.get("MODEL_DIR", ".")
-                model_path = os.path.join(model_dir, "KS-Vijay/urgency-model-aura")
-                self.nlp = pipeline("text-classification", model=model_path)
+                model_path = os.path.join(model_dir, "KS-Vijay_urgency-model-aura")
+
+                self.nlp = pipeline("text-classification", model=model_path, local_files_only=True)
 
             result = self.nlp(text)[0]
             urgency = result['score']

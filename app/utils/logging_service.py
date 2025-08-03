@@ -4,6 +4,9 @@ from app.utils.time_zone import TimeZone
 import logging
 import os
 
+from config import Config
+
+
 class _SafeExtraFilter(logging.Filter):
     def filter(self, record):
         record.user_id = getattr(record, 'user_id', '-')
@@ -16,7 +19,7 @@ class LoggingService:
         self.logger = logging.getLogger(__name__)
         self.logger.setLevel(logging.DEBUG)
         if not self.logger.handlers:
-            log_file = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'app.log')
+            log_file = Config.LOG_FILE_PATH
             file_handler = logging.FileHandler(log_file)
             file_handler.setLevel(logging.DEBUG)
             file_handler.setFormatter(logging.Formatter(

@@ -8,6 +8,7 @@ from app.notion.smart_mapping.field_detector_aggregator import FieldDetectorAggr
 from app.notion.smart_mapping.schema_parser import SchemaParser
 from app.notion.smart_mapping.candidate_generator import CandidateGenerator
 from app.notion.smart_mapping.task_candidate import TaskCandidateBuilder
+from config import Config
 
 
 @pytest.mark.parametrize("inputs,expected", [
@@ -31,7 +32,7 @@ def test_logging_to_file(app, logging_service):
         print(f"Logger handlers: {logging_service.logger.handlers}")
         print(f"Logger level: {logging_service.logger.getEffectiveLevel()}")
         logging_service.error("Test error message", user_id=1, extra={"test": "log"})
-        log_file = os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(__file__))), 'app', 'app.log')
+        log_file = Config.LOG_FILE_PATH
         print(f"Checking log file: {log_file}")
         try:
             with open(log_file, "r") as f:

@@ -1,6 +1,7 @@
 # app/notion/smart_mapping/field_detectors/string_similarity.py
 import os
 
+import numpy as np
 import torch
 from sentence_transformers import SentenceTransformer
 
@@ -36,7 +37,8 @@ class StringSimilarityMatcher(FieldDetector):
                 raise wrap_external_error(e, ServiceUnavailableError, "Failed to load embedding model")
         return self.model
 
-    def detect(self, fields: list[dict], rows: List[dict] = None, db: Session = None, user_id: int = None) -> list[FieldMatch]:
+    def detect(self, fields: list[dict], rows: List[dict] = None, db: Session = None, user_id: int = None) -> list[
+        FieldMatch]:
 
         user_ai_settings = self.features_service.get_settings(db, user_id)
         use_embedding_similarity = user_ai_settings.use_embedding_similarity
@@ -55,7 +57,8 @@ class StringSimilarityMatcher(FieldDetector):
         for i, field in enumerate(fields):
             name_emb = field_embeds[i]
             for j, concept in enumerate(concept_names):
-                sim = F.cosine_similarity(torch.tensor([name_emb]), torch.tensor([concept_embeds[j]])).item()
+                sim = F.cosine_similarity(torch.tensor(np.array([name_emb])),
+                                          torch.tensor(np.array([concept_embeds[j]]))).item()
                 if sim > 0.5:
                     matches.append(FieldMatch(
                         notion_field=field["name"],

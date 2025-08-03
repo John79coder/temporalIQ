@@ -53,5 +53,6 @@ if __name__ == "__main__":
     print("[PYTHON] === Downloading SentenceTransformer ===")
     download_sentence_transformer("all-MiniLM-L6-v2")
 
-    print("[PYTHON] === Downloading and preparing spaCy model ===")
+    print("[PYTHON] === Downloading and preparing spaCy models ===")
     download_spacy_model("en_core_web_sm")
+    download_spacy_model("en_core_web_md")

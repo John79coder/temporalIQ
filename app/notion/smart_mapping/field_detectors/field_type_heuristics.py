@@ -21,7 +21,7 @@ class FieldTypeHeuristics(FieldDetector):
         self.nlp = None
         try:
             model_dir = current_app.config.get("MODEL_DIR", ".")
-            model_path = os.path.join(model_dir, "en_core_web_sm")
+            model_path = os.path.join(model_dir, "en_core_web_md")
             working_dir = os.getcwd()
             self.nlp = spacy.load(model_path)
 

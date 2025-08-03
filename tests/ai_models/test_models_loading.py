@@ -14,7 +14,7 @@ CACHE_DIR = os.path.normpath(os.path.join(BASE_DIR, "..", "..", "ai_models_cache
 @pytest.mark.parametrize("model_name, rel_path", [
     ("HuggingFace urgency classifier", "KS-Vijay_urgency-model-aura"),
     ("SentenceTransformer MiniLM", "all-MiniLM-L6-v2"),
-    ("spaCy English small", "en_core_web_sm"),
+    ("spaCy English small", "en_core_web_md"),
 ])
 def test_model_directory_present(model_name, rel_path):
     path = os.path.join(CACHE_DIR, rel_path)

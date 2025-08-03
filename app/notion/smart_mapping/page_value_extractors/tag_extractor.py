@@ -22,7 +22,7 @@ class TagExtractor(PageValueExtractor):
             if self.nlp is None:
 
                 model_dir = current_app.config.get("MODEL_DIR", ".")
-                model_path = os.path.join(model_dir, "en_core_web_sm")
+                model_path = os.path.join(model_dir, "en_core_web_md")
                 self.nlp = spacy.load(model_path)
 
             doc = self.nlp(text)

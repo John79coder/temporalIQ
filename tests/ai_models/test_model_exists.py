@@ -9,7 +9,7 @@ MODEL_CACHE_ROOT = os.path.abspath(
 # Define model names and their expected subdirectories
 huggingface_models = ["KS-Vijay_urgency-model-aura"]
 sentence_transformer_models = ["all-MiniLM-L6-v2"]
-spacy_models = ["en_core_web_sm"]
+spacy_models = ["en_core_web_md"]
 
 
 def model_path_exists(model_relative_path):

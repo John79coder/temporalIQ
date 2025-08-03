@@ -5,7 +5,7 @@ import spacy
 from flask import current_app
 from transformers import T5Tokenizer, T5ForConditionalGeneration
 
-nlp = spacy.load("en_core_web_sm")
+nlp = spacy.load("en_core_web_md")
 
 # Pretrained T5 model checkpoint for Split-and-Rephrase
 

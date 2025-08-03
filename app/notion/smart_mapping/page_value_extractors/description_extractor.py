@@ -20,7 +20,7 @@ class DescriptionExtractor(PageValueExtractor):
         if self.features_service.get_settings(db, user_id).use_spacy_heuristics:
             if self.nlp is None:
                 model_dir = current_app.config.get("MODEL_DIR", ".")
-                model_path = os.path.join(model_dir, "en_core_web_sm")
+                model_path = os.path.join(model_dir, "en_core_web_md")
                 self.nlp = spacy.load(model_path)
 
             doc = self.nlp(text)

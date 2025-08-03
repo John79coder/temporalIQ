@@ -29,6 +29,8 @@ class Config:
     STRIPE_PRICE_ID_PREMIUM = os.getenv("STRIPE_PRICE_ID_PREMIUM")
     MODEL_DIR = os.getenv("MODEL_DIR", "ai_models_cache")
     SESSION_TYPE = "filesystem"  # Add this line
+    PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+    LOG_FILE_PATH = os.path.join(PROJECT_ROOT, 'log.txt')
 
 class TestingConfig(Config):
     TESTING = True

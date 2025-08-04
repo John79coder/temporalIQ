@@ -1,5 +1,5 @@
 # notion/client/notion_client.py
-from typing import List, Dict
+from typing import List, Dict, Optional
 import requests
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 import logging

@@ -64,7 +64,7 @@ class PageTaskExtractionEngine:
         for section in sections:
             try:
                 partial = self._extract_from_section(section, db, user_id, app)
-                partials.append(partial)
+                partials.extend(partial)
             except Exception as e:
                 logging.error(f"Extraction failed for section: {str(e)}")
 

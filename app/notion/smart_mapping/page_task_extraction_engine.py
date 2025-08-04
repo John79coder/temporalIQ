@@ -50,26 +50,23 @@ class PageTaskExtractionEngine:
         self.registry.register_detector(TagExtractor(self.features_service))
         self.registry.register_detector(DescriptionExtractor(self.features_service))
 
-    def generate_candidates(self, blocks: List[Dict], db: Session, user_id: int, page_id: str) -> List[TaskCandidateData]:
+    def generate_candidates(self, blocks: List[Dict], db: Session, user_id: int, page_id: str) -> List[
+        TaskCandidateData]:
         settings = self.features_service.get_settings(db, user_id)
         if not settings.use_ai_page_extraction:
             return []  # Or fallback to basic extraction if needed
 
         sections = self.sectionizer.segment(blocks)
         partials = []
-        app = current_app._get_current_object()  # For threading
+        app = current_app._get_current_object()  # For context (now used in main thread)
 
-        with ThreadPoolExecutor(max_workers=8) as ex:  # Parallel per section
-
-            futures = [ex.submit(self._extract_from_section, section, db, user_id, app) for section in sections]
-
-            for future in as_completed(futures):
-                try:
-                    partials.append(future.result())
-                except Exception as e:
-                    logging.error(f"Extraction failed for section: {str(e)}")
-
-
+        # Run sequentially to avoid thread/mock issues; parallelism can be re-added via config if needed
+        for section in sections:
+            try:
+                partial = self._extract_from_section(section, db, user_id, app)
+                partials.append(partial)
+            except Exception as e:
+                logging.error(f"Extraction failed for section: {str(e)}")
 
         candidates = self.aggregator.aggregate(partials, user_id, page_id, db)
         return candidates

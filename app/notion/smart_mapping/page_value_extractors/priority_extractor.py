@@ -1,14 +1,13 @@
+# app/notion/smart_mapping/page_value_extractors/priority_extractor.py
 import os
-
 from flask import current_app
-
 from app.notion.smart_mapping.page_value_extractors.base import PageValueExtractor
 from app.features.services.service import FeaturesService
 from sqlalchemy.orm import Session
 from typing import List, Dict
 from app.notion.models.schemas import PartialCandidate
 from sentence_transformers import SentenceTransformer, util
-from sentence_transformers.models import Transformer, Pooling  # CHANGED: Added for modular loading
+from sentence_transformers.models import Transformer, Pooling
 
 class PriorityExtractor(PageValueExtractor):
     def __init__(self, features_service: FeaturesService):
@@ -21,10 +20,8 @@ class PriorityExtractor(PageValueExtractor):
 
         if self.features_service.get_settings(db, user_id).use_embedding_similarity:
             if self.model is None:
-
                 model_dir = current_app.config.get("MODEL_DIR", ".")
                 model_path = os.path.join(model_dir, "all-MiniLM-L6-v2")
-                # CHANGED: Modular loading to inject attn_implementation
                 transformer = Transformer(model_name_or_path=model_path, model_args={"attn_implementation": "eager"})
                 pooling = Pooling(transformer.get_word_embedding_dimension(), pooling_mode='mean')
                 self.model = SentenceTransformer(modules=[transformer, pooling])

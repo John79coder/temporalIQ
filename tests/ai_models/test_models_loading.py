@@ -1,12 +1,10 @@
 # tests/ai_models/test_models_loading.py
 import os
-
 import numpy as np
 import pytest
-
-from transformers import AutoTokenizer, AutoModel, AutoConfig  # CHANGED: Added AutoConfig for attn_implementation
+from transformers import AutoTokenizer, AutoModel, AutoConfig
 from sentence_transformers import SentenceTransformer
-from sentence_transformers.models import Transformer, Pooling  # CHANGED: Added for modular loading
+from sentence_transformers.models import Transformer, Pooling
 import spacy
 
 # Absolute path to the root-relative 'ai_models_cache' directory
@@ -25,15 +23,14 @@ def test_model_directory_present(model_name, rel_path):
 def test_load_hf_urgency_model():
     path = os.path.join(CACHE_DIR, "KS-Vijay_urgency-model-aura")
     tok = AutoTokenizer.from_pretrained(path, local_files_only=True)
-    config = AutoConfig.from_pretrained(path, attn_implementation="eager")  # CHANGED: Added config with eager
-    model = AutoModel.from_pretrained(path, config=config, local_files_only=True)  # CHANGED: Passed config
+    config = AutoConfig.from_pretrained(path, attn_implementation="eager")
+    model = AutoModel.from_pretrained(path, config=config, local_files_only=True)
     tokens = tok("Test", return_tensors="pt")
     outputs = model(**tokens)
     assert outputs.last_hidden_state.shape[0] == 1
 
 def test_load_sentence_transformer():
     path = os.path.join(CACHE_DIR, "all-MiniLM-L6-v2")
-    # CHANGED: Modular loading to inject attn_implementation
     transformer = Transformer(model_name_or_path=path, model_args={"attn_implementation": "eager"})
     pooling = Pooling(transformer.get_word_embedding_dimension(), pooling_mode='mean')
     model = SentenceTransformer(modules=[transformer, pooling])

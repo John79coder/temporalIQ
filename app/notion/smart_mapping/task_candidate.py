@@ -9,27 +9,24 @@ from app.notion.models.entities import FieldMapping
 from app.notion.smart_mapping.models import FieldMatch, TaskCandidateData
 from app.utils.time_zone import TimeZone
 
-from datetime import datetime
+from datetime import datetime, timezone
+
 
 class TaskCandidateBuilder:
     def __init__(self, preferences_service):
         self.preferences_service = preferences_service
 
     def _parse_due_date(self, db: Session, due_date_str: str, user_id: int, issues: List[str]) -> Optional[datetime]:
-        """Parse due_date_str and convert to UTC datetime, assuming user’s timezone if not UTC."""
+        if not due_date_str:
+            return None
         try:
-            # Check if due_date_str is already in UTC
-            if due_date_str.endswith('Z') or due_date_str.endswith('+00:00'):
-                return TimeZone.parse_utc_datetime("due_date", due_date_str)
-            # Parse as datetime with timezone info
-            due_date = datetime.fromisoformat(due_date_str)
+            # Normalize 'Z' to '+00:00' so it works with fromisoformat
+            due_date = datetime.fromisoformat(due_date_str.replace("Z", "+00:00"))
 
-            user_prefs = self.preferences_service.get_preferences(db, user_id)
+            user_preferences = self.preferences_service.get_preferences(db, user_id)
+            user_tz = user_preferences.time_zone or "UTC"
 
-            user_tz = user_prefs.time_zone if user_prefs and user_prefs.time_zone else "UTC"
-            # Ensure datetime is localized to user's timezone if naive
-            if due_date.tzinfo is None:
-                due_date = due_date.replace(tzinfo=ZoneInfo(user_tz))
+            # ✅ Let TimeZone handle timezone correctness and DST issues
             utc_datetime = TimeZone.to_utc(due_date, user_tz)
             return utc_datetime
         except ValueError as e:
@@ -58,7 +55,8 @@ class TaskCandidateBuilder:
             else:
                 issues.append(f"Missing title field: {mapping.title_field}")
             if mapping.due_date_field in properties:
-                due_date = properties[mapping.due_date_field].get("date", {}).get("start")
+                due_date_str = properties[mapping.due_date_field].get("date", {}).get("start")
+                due_date = self._parse_due_date(db, due_date_str, user_id, issues)
             elif mapping.due_date_field:
                 issues.append(f"Missing due_date field: {mapping.due_date_field}")
             if mapping.duration_field in properties:
@@ -86,7 +84,8 @@ class TaskCandidateBuilder:
                 if "title" in fields and fields["title"] in properties:
                     title = properties[fields["title"]].get("title", [{}])[0].get("plain_text", "Untitled")
                 if "due_date" in fields and fields["due_date"] in properties:
-                    due_date = properties[fields["due_date"]].get("date", {}).get("start")
+                    due_date_str = properties[fields["due_date"]].get("date", {}).get("start")
+                    due_date = self._parse_due_date(db, due_date_str, user_id, issues)
                 if "duration" in fields and fields["duration"] in properties:
                     duration = properties[fields["duration"]].get("number")
                 if "priority" in fields and fields["priority"] in properties:

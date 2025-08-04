@@ -1,15 +1,19 @@
-# app/auth/models/schemas.py
 import re
-from pydantic import BaseModel, EmailStr, field_validator, Field, ConfigDict
+from pydantic import BaseModel, EmailStr, field_validator, Field, model_serializer, ConfigDict
 from datetime import datetime
 from typing import Optional
 from app.utils.time_zone import TimeZone
 
 class BaseOutModel(BaseModel):
-    model_config = ConfigDict(
-        from_attributes=True,
-        json_encoders={datetime: TimeZone.serialize_datetime}
-    )
+    model_config = ConfigDict(from_attributes=True)
+
+    @model_serializer(mode='wrap')
+    def serialize_model(self, handler) -> dict:
+        data = handler(self)
+        for key, value in data.items():
+            if isinstance(value, datetime):
+                data[key] = TimeZone.serialize_datetime(value)
+        return data
 
 class UserCreate(BaseModel):
     email: EmailStr

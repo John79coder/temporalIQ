@@ -1,15 +1,19 @@
-# app/notion/models/schemas.py
-from pydantic import BaseModel, ConfigDict, Field, field_validator, HttpUrl
+from pydantic import BaseModel, model_serializer, Field, field_validator, HttpUrl, ConfigDict
 from datetime import datetime
 from typing import Optional, List
 from enum import Enum
 from app.utils.time_zone import TimeZone
 
 class BaseOutModel(BaseModel):
-    model_config = ConfigDict(
-        from_attributes=True,
-        json_encoders={datetime: TimeZone.serialize_datetime}
-    )
+    model_config = ConfigDict(from_attributes=True)
+
+    @model_serializer(mode='wrap')
+    def serialize_model(self, handler) -> dict:
+        data = handler(self)
+        for key, value in data.items():
+            if isinstance(value, datetime):
+                data[key] = TimeZone.serialize_datetime(value)
+        return data
 
 class Priority(str, Enum):
     HIGH = "high"
@@ -93,10 +97,10 @@ class TaskCandidateOut(BaseOutModel):
     )
     duration: Optional[int] = Field(None, ge=1, le=1440, description="Duration in minutes (1-1440)")
     confidence: float = Field(ge=0.0, le=1.0, description="Confidence score between 0 and 1")
-    issues: List[str] = Field(min_items=0, description="List of mapping issues")
+    issues: List[str] = Field(min_length=0, description="List of mapping issues")
     priority: Optional[Priority] = Field(None, description="Task priority (high, medium, low)")
     status: Optional[Status] = Field(None, description="Task status (todo, in_progress, done)")
-    tags: Optional[List[str]] = Field(None, min_items=0, description="List of task tags")
+    tags: Optional[List[str]] = Field(None, min_length=0, description="List of task tags")
     created_at: datetime
     updated_at: Optional[datetime] = None
     page_id: Optional[str] = None

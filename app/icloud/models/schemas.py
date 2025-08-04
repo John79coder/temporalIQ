@@ -1,16 +1,20 @@
-# app/icloud/models/schemas.py
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, Field, field_validator, ConfigDict
+from pydantic import BaseModel, Field, field_validator, model_serializer, ConfigDict
 import re
 
 from app.utils.time_zone import TimeZone
 
 class BaseOutModel(BaseModel):
-    model_config = ConfigDict(
-        from_attributes=True,
-        json_encoders={datetime: TimeZone.serialize_datetime}
-    )
+    model_config = ConfigDict(from_attributes=True)
+
+    @model_serializer(mode='wrap')
+    def serialize_model(self, handler) -> dict:
+        data = handler(self)
+        for key, value in data.items():
+            if isinstance(value, datetime):
+                data[key] = TimeZone.serialize_datetime(value)
+        return data
 
 class CalendarEvent(BaseOutModel):
     start: datetime

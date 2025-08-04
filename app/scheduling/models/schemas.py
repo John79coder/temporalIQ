@@ -1,15 +1,19 @@
-# app/scheduling/models/schemas.py
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, model_serializer, field_validator, ConfigDict
 from typing import List
 from datetime import datetime, timedelta
 from app.utils.time_zone import TimeZone
 import re
 
 class BaseOutModel(BaseModel):
-    model_config = ConfigDict(
-        from_attributes=True,
-        json_encoders={datetime: TimeZone.serialize_datetime}
-    )
+    model_config = ConfigDict(from_attributes=True)
+
+    @model_serializer(mode='wrap')
+    def serialize_model(self, handler) -> dict:
+        data = handler(self)
+        for key, value in data.items():
+            if isinstance(value, datetime):
+                data[key] = TimeZone.serialize_datetime(value)
+        return data
 
 class TimeBlockIn(BaseModel):
     start: datetime

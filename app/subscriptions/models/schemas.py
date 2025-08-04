@@ -1,13 +1,18 @@
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, model_serializer, Field, ConfigDict
 from datetime import datetime
 from typing import Optional
 from app.utils.time_zone import TimeZone
 
 class BaseOutModel(BaseModel):
-    model_config = ConfigDict(
-        from_attributes=True,
-        json_encoders={datetime: TimeZone.serialize_datetime}
-    )
+    model_config = ConfigDict(from_attributes=True)
+
+    @model_serializer(mode='wrap')
+    def serialize_model(self, handler) -> dict:
+        data = handler(self)
+        for key, value in data.items():
+            if isinstance(value, datetime):
+                data[key] = TimeZone.serialize_datetime(value)
+        return data
 
 class SubscriptionCreate(BaseModel):
     user_id: int = Field(ge=1)

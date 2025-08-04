@@ -6,6 +6,7 @@ from app.notion.smart_mapping.page_value_extractors.tag_extractor import TagExtr
 from app.notion.smart_mapping.page_value_extractors.description_extractor import DescriptionExtractor
 from app.notion.smart_mapping.detector_registry import DetectorRegistry
 from app.notion.smart_mapping.field_detector_aggregator import FieldDetectorAggregator
+from app.notion.smart_mapping.sentence_task_splitter.task_splitter import SentenceSplitter
 from app.utils.caching import ICacheService
 from app.features.services.service import FeaturesService
 from sqlalchemy.orm import Session
@@ -34,10 +35,12 @@ class PageTaskExtractionEngine:
         self.features_service = features_service
         self.sectionizer = Sectionizer()
         self.aggregator = PageAggregator(preferences_service)
+        self.sentence_splitter = SentenceSplitter()
         # Initialize registry with all extractors (reusing codebase patterns)
         self.registry = DetectorRegistry(features_service, None, None)  # Reuse base registry
         self._register_extractors()
         self.extractor_aggregator = FieldDetectorAggregator(self.registry)
+
 
     def _register_extractors(self):
         """Register all page value extractors."""
@@ -49,6 +52,7 @@ class PageTaskExtractionEngine:
         self.registry.register_detector(CompletionExtractor(self.features_service))
         self.registry.register_detector(TagExtractor(self.features_service))
         self.registry.register_detector(DescriptionExtractor(self.features_service))
+
 
     def generate_candidates(self, blocks: List[Dict], db: Session, user_id: int, page_id: str) -> List[
         TaskCandidateData]:
@@ -75,67 +79,76 @@ class PageTaskExtractionEngine:
         with app.app_context():
             partials: List[PartialCandidate] = []
             extraction_order = 0
+            settings = self.features_service.get_settings(db, user_id)  # Added: Fetch settings for toggle
 
             for block_index in range(len(section.blocks)):
                 block = section.blocks[block_index]
                 raw_text = self._extract_text_from_block(block)
-                remaining_text = raw_text
-                span_index = 0
 
-                while remaining_text:
-                    # Create a single PartialCandidate per span
-                    partial = PartialCandidate(confidence=0.5)
-                    total_conf = 0.0
-                    count = 0
+                # New: Preprocess with sentence splitter if enabled
+                if True:  # Assuming this toggle is added to FeaturesService
+                    segments = self.sentence_splitter.split_into_tasks(raw_text)
+                else:
+                    segments = [raw_text]  # Fallback to original: treat full text as one segment
 
-                    # Run each extractor on the block text
-                    for extractor in self.registry.get_detectors():  # Detectors are PageValueExtractor instances
-                        extracted = extractor.extract([self._block_from_text(remaining_text)], db, user_id)
-                        # Merge fields from extracted PartialCandidate
-                        if extracted.title:
-                            partial.title = extracted.title
-                        if extracted.due_date:
-                            partial.due_date = extracted.due_date
-                        if extracted.description:
-                            partial.description = extracted.description
-                        if extracted.duration:
-                            partial.duration = extracted.duration
-                        if extracted.priority:
-                            partial.priority = extracted.priority
-                        if extracted.status:
-                            partial.status = extracted.status
-                        if extracted.tags:
-                            partial.tags = extracted.tags
-                        if extracted.urgency:
-                            partial.urgency = extracted.urgency
-                        if extracted.confidence:
-                            total_conf += extracted.confidence
-                            count += 1
+                segment_span_base = 0  # New: Base for span_index per segment, increments across
 
-                    # Calculate average confidence
-                    partial.confidence = total_conf / count if count > 0 else 0.5
+                for segment in segments:
+                    if not segment.strip():
+                        continue  # Skip empty segments from splitter
 
-                    # Assign structural metadata
-                    partial.block_id = block.get("id")
-                    partial.block_index = block_index
-                    partial.span_index = span_index
-                    partial.extraction_order = extraction_order
+                    remaining_text = segment
+                    span_index = segment_span_base  # Start span_index from base for this segment
 
-                    # Only append if at least one field was set
-                    if any([partial.title, partial.due_date, partial.description, partial.duration,
-                            partial.priority, partial.status, partial.tags, partial.urgency != 0.5]):
-                        partials.append(partial)
+                    while remaining_text:
+                        partial = PartialCandidate(confidence=0.5)
+                        total_conf = 0.0
+                        count = 0
 
-                    # Remove matched text spans
-                    remaining_text = self._remove_matched_spans(remaining_text, partial)
+                        for extractor in self.registry.get_detectors():
+                            extracted = extractor.extract([self._block_from_text(remaining_text)], db, user_id)
+                            # Merge fields from extracted PartialCandidate (unchanged)
+                            if extracted.title:
+                                partial.title = extracted.title
+                            if extracted.due_date:
+                                partial.due_date = extracted.due_date
+                            if extracted.description:
+                                partial.description = extracted.description
+                            if extracted.duration:
+                                partial.duration = extracted.duration
+                            if extracted.priority:
+                                partial.priority = extracted.priority
+                            if extracted.status:
+                                partial.status = extracted.status
+                            if extracted.tags:
+                                partial.tags = extracted.tags
+                            if extracted.urgency:
+                                partial.urgency = extracted.urgency
+                            if extracted.confidence:
+                                total_conf += extracted.confidence
+                                count += 1
 
-                    # Break if no fields were extracted
-                    if not any([partial.title, partial.due_date, partial.description, partial.duration,
+                        partial.confidence = total_conf / count if count > 0 else 0.5
+
+                        partial.block_id = block.get("id")
+                        partial.block_index = block_index
+                        partial.span_index = span_index
+                        partial.extraction_order = extraction_order
+
+                        if any([partial.title, partial.due_date, partial.description, partial.duration,
                                 partial.priority, partial.status, partial.tags, partial.urgency != 0.5]):
-                        break
+                            partials.append(partial)
 
-                    span_index += 1
-                    extraction_order += 1
+                        remaining_text = self._remove_matched_spans(remaining_text, partial)
+
+                        if not any([partial.title, partial.due_date, partial.description, partial.duration,
+                                    partial.priority, partial.status, partial.tags, partial.urgency != 0.5]):
+                            break
+
+                        span_index += 1
+                        extraction_order += 1
+
+                    segment_span_base = span_index  # Update base for next segment (maintains sequence)
 
             return partials
 

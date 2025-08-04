@@ -27,7 +27,7 @@ csrf = CSRFProtect()
 csrf_exempt = csrf.exempt
 
 cache = Cache(config={
-    "CACHE_TYPE": "redis" if os.getenv("FLASK_ENV") != "test" else "simple",
+    "CACHE_TYPE": "flask_caching.backends.RedisCache" if os.getenv("FLASK_ENV") != "test" else "flask_caching.backends.SimpleCache",
     "CACHE_REDIS_URL": redis_url,
     "CACHE_DEFAULT_TIMEOUT": 3600  # Default TTL: 1 hour
 })

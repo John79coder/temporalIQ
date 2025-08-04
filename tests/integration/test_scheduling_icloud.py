@@ -19,7 +19,7 @@ def test_scheduling_preview(mock_get_caldav_client, mock_fetch_user_events, auth
 
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
 
         # Create a valid encrypted password
         encryptor = Encryptor()

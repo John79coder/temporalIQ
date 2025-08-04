@@ -12,7 +12,7 @@ def test_set_preferences__success(authorized_client, db_session, app, test_user)
 
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
 
         response = authorized_client.post("/user/preferences", json={
             "user_id": user_id,
@@ -38,7 +38,7 @@ def test_set_preferences__invalid_input(authorized_client, db_session, app, test
 
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
 
         response = authorized_client.post("/user/preferences", json={
             "user_id": user_id,
@@ -58,7 +58,7 @@ def test_set_preferences__unauthorized(authorized_client, db_session, app, test_
 
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
 
         response = authorized_client.post("/user/preferences", json={
             "user_id": user_id + 1,
@@ -80,7 +80,7 @@ def test_set_preferences__database_failure(mock_create, authorized_client, db_se
 
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
 
         response = authorized_client.post("/user/preferences", json={
             "user_id": user_id,
@@ -101,7 +101,7 @@ def test_get_preferences__success(authorized_client, db_session, app, test_user)
     with app.app_context():
 
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
 
         user_preferences = UserPreferences(user_id=user_id, block_size_minutes=30, allow_weekends=False, max_blocks_per_day=16, work_hours=7.6)
 
@@ -134,7 +134,7 @@ def test_get_preferences__unauthorized(authorized_client, db_session, app, test_
 
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
 
         response = authorized_client.get(f"/user/preferences/{user_id + 1}", headers={"X-CSRF-Token": authorized_client.csrf_token})
 

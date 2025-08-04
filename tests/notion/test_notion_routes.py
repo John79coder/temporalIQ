@@ -34,7 +34,7 @@ def test_connect_notion_success(mock_post, authorized_client, db_session, app, t
 
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
 
         response = authorized_client.post("/notion/connect", json={
             "user_id": user_id,
@@ -66,7 +66,7 @@ def test_connect_notion_no_data(mock_post, authorized_client, db_session, app, t
 
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
 
         response = authorized_client.post("/notion/connect", json={
             "user_id": user_id,
@@ -97,7 +97,7 @@ def test_connect_notion_database_failure(mock_save, mock_post, authorized_client
 
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
 
         response = authorized_client.post("/notion/connect", json={
             "user_id": user_id,
@@ -115,7 +115,7 @@ def test_map_schema_success(authorized_client, db_session, app, test_user):
 
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
 
         response = authorized_client.post("/notion/map-schema", json={
             "user_id": user_id,
@@ -140,7 +140,7 @@ def test_map_schema_invalid_input(authorized_client, db_session, app, test_user)
 
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
 
         response = authorized_client.post("/notion/map-schema", json={
             "user_id": user_id,
@@ -160,7 +160,7 @@ def test_map_schema_unauthorized(authorized_client, db_session, app, test_user):
 
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
 
         response = authorized_client.post("/notion/map-schema", json={
             "user_id": user_id + 1,
@@ -213,7 +213,7 @@ def test_generate_candidates_success(mock_get_preferences, mock_get_connection, 
 
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
         db_session.add(mock_connection)
 
         field_mapping = FieldMapping(
@@ -250,7 +250,7 @@ def test_generate_candidates_no_connection(mock_get_connection, authorized_clien
 
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
 
         response = authorized_client.post("/notion/generate-candidates", json={"database_id": "db1"}, headers={"X-CSRF-Token": authorized_client.csrf_token})
 
@@ -278,7 +278,7 @@ def test_generate_candidates_database_failure(mock_get_connection, mock_schema, 
 
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
         db_session.add(mock_connection)
         db_session.commit()
 
@@ -308,7 +308,7 @@ def test_list_databases_success(mock_get_connection, mock_list, authorized_clien
 
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
         db_session.add(mock_connection)
         db_session.commit()
 
@@ -328,7 +328,7 @@ def test_list_databases_no_connection(mock_get_connection, authorized_client, db
 
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
 
         response = authorized_client.get("/notion/databases", headers={"X-CSRF-Token": authorized_client.csrf_token})
 
@@ -366,7 +366,7 @@ def test_refresh_token_success(mock_get_connection, mock_post, authorized_client
 
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
 
         response = authorized_client.post("/notion/refresh-token", headers={"X-CSRF-Token": authorized_client.csrf_token})
 
@@ -395,7 +395,7 @@ def test_refresh_token_no_refresh_token(mock_get_connection, authorized_client, 
 
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
         db_session.add(mock_connection)
         db_session.commit()
 
@@ -429,7 +429,7 @@ def test_preview_mapping_success(mock_get_connection, mock_schema, authorized_cl
 
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
         db_session.add(mock_connection)
         db_session.commit()
 

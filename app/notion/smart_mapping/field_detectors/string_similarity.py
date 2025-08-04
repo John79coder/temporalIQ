@@ -1,13 +1,13 @@
-# app/notion/smart_mapping/field_detectors/string_similarity.py
 import os
 
 import numpy as np
 import torch
 from sentence_transformers import SentenceTransformer
+from sentence_transformers.models import Transformer, Pooling  # CHANGED: Added for modular loading
 
 from app.notion.smart_mapping.field_detectors.base import FieldDetector
 from app.notion.smart_mapping.models import FieldMatch
-from app.utils.exceptions import wrap_external_error, ServiceUnavailableError, DataValidationError
+from app.utils.exceptions import wrap_external_error, ServiceUnavailableError
 
 import torch.nn.functional as F
 from typing import List
@@ -28,17 +28,17 @@ class StringSimilarityMatcher(FieldDetector):
     def get_model(self):
         if self.model is None:
             try:
-
                 model_dir = current_app.config.get("MODEL_DIR", ".")
                 model_path = os.path.join(model_dir, "all-MiniLM-L6-v2")
-                self.model = SentenceTransformer(model_path)
-
+                # CHANGED: Modular loading to inject attn_implementation
+                transformer = Transformer(model_name_or_path=model_path, model_args={"attn_implementation": "eager"})
+                pooling = Pooling(transformer.get_word_embedding_dimension(), pooling_mode='mean')
+                self.model = SentenceTransformer(modules=[transformer, pooling])
             except Exception as e:
                 raise wrap_external_error(e, ServiceUnavailableError, "Failed to load embedding model")
         return self.model
 
-    def detect(self, fields: list[dict], rows: List[dict] = None, db: Session = None, user_id: int = None) -> list[
-        FieldMatch]:
+    def detect(self, fields: list[dict], rows: List[dict] = None, db: Session = None, user_id: int = None) -> list[FieldMatch]:
 
         user_ai_settings = self.features_service.get_settings(db, user_id)
         use_embedding_similarity = user_ai_settings.use_embedding_similarity

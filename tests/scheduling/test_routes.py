@@ -1,14 +1,8 @@
 # tests/scheduling/test_routes.py
-import json
-
-import pytest
 from unittest.mock import patch, Mock
 from flask import g
 from app.scheduling.models.entities import Task
-from app.scheduling.models.schemas import SchedulePreviewIn, ScheduleConfirmIn
 from app.auth.models.entities import User
-from datetime import datetime, timezone
-from app.icloud.services.client_manager import CalDAVClientManager
 from app.notion.models.entities import TaskCandidate
 from app.user_preferences.models.entities import UserPreferences
 
@@ -19,7 +13,7 @@ def test_preview_schedule_success(mock_fetch_user_events, authorized_client, db_
     mock_fetch_user_events.return_value = []
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
         db_session.add(TaskCandidate(user_id=user_id, notion_db_id="db1", title="Test Task", duration=30, confidence=1.0, due_date=None, issues=[]))
         db_session.add(UserPreferences(user_id=user_id, time_zone="UTC", work_hours=8.0, block_size_minutes=30))
         db_session.commit()
@@ -52,7 +46,7 @@ def test_confirm_schedule_success(mock_get_caldav_client, mock_write_scheduled_e
     mock_write_scheduled_event.return_value = None
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
         task = Task(user_id=user_id, notion_db_id="db1", title="Test Task", duration=30)
         db_session.add(task)
         db_session.commit()

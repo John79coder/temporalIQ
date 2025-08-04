@@ -11,7 +11,7 @@ def test_connect_icloud_success(authorized_client, db_session, app, test_user, c
     _, user_id = test_user
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
         email = f"test_icloud_{uuid.uuid4().hex}@example.com"
         response = authorized_client.post("/icloud/connect", json={
             "app_password": "test-password"
@@ -26,7 +26,7 @@ def test_connect_icloud_invalid_data(authorized_client, db_session, app, test_us
     _, user_id = test_user
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
         response = authorized_client.post("/icloud/connect", json={
             "app_password": ""
         }, headers={"X-CSRF-Token": authorized_client.csrf_token})
@@ -52,7 +52,7 @@ def test_list_calendars_success(mock_user, mock_dav_client, mock_decrypt, mock_c
     mock_dav_instance.principal.return_value.calendars.return_value = [mock_calendar]
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
         db_session.add(iCloudConnection(user_id=user_id, encrypted_app_password="encrypted"))
         db_session.commit()
         response = authorized_client.get(
@@ -75,7 +75,7 @@ def test_list_calendars_no_connection(authorized_client, db_session, app, test_u
     _, user_id = test_user
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
         response = authorized_client.get("/icloud/calendars", headers={"X-CSRF-Token": authorized_client.csrf_token})
         assert response.status_code == 500
         assert "No iCloud connection" in response.json["detail"]
@@ -113,7 +113,7 @@ def test_get_events_success(mock_get_calendar, mock_user, mock_dav_client, mock_
     end_param = start_time.replace(day=start_time.day + 1, hour=0, minute=0).isoformat().replace("+00:00", "Z")
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
         db_session.add(iCloudConnection(user_id=user_id, encrypted_app_password="encrypted"))
         db_session.commit()
         response = authorized_client.get(
@@ -139,7 +139,7 @@ def test_get_events_invalid_parameters(mock_user, mock_dav_client, mock_decrypt,
     mock_dav_client.return_value = mock_dav_instance
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
         response = authorized_client.get("/icloud/events", headers={"X-CSRF-Token": authorized_client.csrf_token})
         assert response.status_code == 400
         assert "Missing required parameters" in response.json["detail"]
@@ -162,7 +162,7 @@ def test_create_event_success(mock_user, mock_dav_client, mock_decrypt, mock_cac
     mock_dav_instance.principal.return_value.calendar.return_value = mock_calendar
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
         db_session.add(iCloudConnection(user_id=user_id, encrypted_app_password="encrypted"))
         db_session.commit()
         event = {
@@ -181,7 +181,7 @@ def test_create_event_no_connection(authorized_client, db_session, app, test_use
     _, user_id = test_user
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
         event = {
             "calendar_id": "cal1",
             "event": {
@@ -203,7 +203,7 @@ def test_update_icloud_connection_success(mock_encrypt, mock_cache_set, authoriz
     mock_cache_set.return_value = None
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
         db_session.add(iCloudConnection(user_id=user_id, encrypted_app_password="old-encrypted"))
         db_session.commit()
         response = authorized_client.post("/icloud/update", json={
@@ -218,7 +218,7 @@ def test_update_icloud_connection_no_connection(authorized_client, db_session, a
     _, user_id = test_user
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
         response = authorized_client.post("/icloud/update", json={
             "app_password": "new-password"
         }, headers={"X-CSRF-Token": authorized_client.csrf_token})
@@ -243,7 +243,7 @@ def test_get_available_time_blocks_success(mock_user, mock_dav_client, mock_decr
     mock_dav_instance.principal.return_value.calendar.return_value = mock_calendar
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
         db_session.add(iCloudConnection(user_id=user_id, encrypted_app_password="encrypted"))
         db_session.commit()
         response = authorized_client.get(
@@ -268,7 +268,7 @@ def test_get_available_time_blocks_invalid_time(mock_user, mock_dav_client, mock
     mock_dav_client.return_value = mock_dav_instance
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
         response = authorized_client.get(
             "/icloud/available?calendar_id=cal1&start_date=2023-10-10T00:00:00Z&end_date=2023-10-11T00:00:00Z&earliest_time=17:00&latest_time=09:00",
             headers={"X-CSRF-Token": authorized_client.csrf_token}
@@ -294,7 +294,7 @@ def test_schedule_blocks_success(mock_user, mock_dav_client, mock_cache_set, aut
     mock_dav_instance.principal.return_value.calendar.return_value = mock_calendar
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
         db_session.add(iCloudConnection(user_id=user_id, encrypted_app_password=valid_encrypted_password))
         db_session.commit()
         events = [{
@@ -313,7 +313,7 @@ def test_schedule_blocks_invalid_events(authorized_client, db_session, app, test
     _, user_id = test_user
     with app.app_context():
         g.db = db_session
-        g.current_user = db_session.query(User).get(user_id)
+        g.current_user = db_session.get(User, user_id)
         db_session.add(iCloudConnection(user_id=user_id, encrypted_app_password="encrypted"))
         db_session.commit()
         response = authorized_client.post("/icloud/schedule", json={

@@ -1,7 +1,7 @@
 import os
 import shutil
 import subprocess
-from transformers import AutoTokenizer, AutoModel
+from transformers import AutoTokenizer, AutoModel, T5Tokenizer, T5ForConditionalGeneration
 from sentence_transformers import SentenceTransformer
 import spacy
 from spacy.cli import download as spacy_download
@@ -20,6 +20,16 @@ def download_hf_transformer(name):
     print(f"[PYTHON] Downloading HF transformer model: {name}")
     tokenizer = AutoTokenizer.from_pretrained(name)
     model = AutoModel.from_pretrained(name)
+    save_dir = os.path.join(cache_root, name.replace("/", "_"))
+    os.makedirs(save_dir, exist_ok=True)
+    tokenizer.save_pretrained(save_dir)
+    model.save_pretrained(save_dir)
+    print(f"[PYTHON] ✅ Saved to {save_dir}")
+
+def download_t5_splitter_model(name):
+    print(f"[PYTHON] Downloading T5 Split-and-Rephrase model: {name}")
+    tokenizer = T5Tokenizer.from_pretrained(name)
+    model = T5ForConditionalGeneration.from_pretrained(name)
     save_dir = os.path.join(cache_root, name.replace("/", "_"))
     os.makedirs(save_dir, exist_ok=True)
     tokenizer.save_pretrained(save_dir)
@@ -49,6 +59,9 @@ def download_spacy_model(name):
 if __name__ == "__main__":
     print("[PYTHON] === Downloading HF transformer ===")
     download_hf_transformer("KS-Vijay/urgency-model-aura")
+
+    print("[PYTHON] === Downloading T5 Split-and-Rephrase model ===")
+    download_t5_splitter_model("unikei/t5-base-split-and-rephrase")
 
     print("[PYTHON] === Downloading SentenceTransformer ===")
     download_sentence_transformer("all-MiniLM-L6-v2")

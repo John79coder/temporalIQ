@@ -98,7 +98,7 @@ class FreeTimeFinder(IFreeTimeFinder):
                     features.append([
                         input_data.num_events,
                         input_data.day_length_hours,
-                        input_data.urgency
+                        input_data.urgency  # Already float
                     ])
                     labels.append(label_data.duration_minutes)
                 except ValueError as e:
@@ -177,7 +177,7 @@ class FreeTimeFinder(IFreeTimeFinder):
             # Fetch events and settings
             events = self._fetch_events(db, user_id, calendar_id, start_date, end_date)
             user_ai_settings = self.features_service.get_settings(db, user_id)
-            use_ml = user_ai_settings.urgency_learning_scope != 'off'
+            use_ml = user_ai_settings.duration_learning_scope != 'off'  # FIXED: Use correct scope
 
             if use_ml:
                 self._train_model(db, user_id)
@@ -249,9 +249,10 @@ class FreeTimeFinder(IFreeTimeFinder):
     def _compute_block_end(self, current_time: datetime, day_start: datetime, day_end: datetime, events: List,
                            num_events: int, use_ml: bool, user_id: int, db : Session, task: Optional[Task]) -> datetime:
         """Compute the end time for a time block."""
+        from app.scheduling.models.policies import get_urgency_float  # NEW: Import utility
         try:
             if use_ml:
-                urgency = self.time_block_generator.get_urgency_score(task.title, user_id) if task else 0.0
+                urgency = get_urgency_float(self.time_block_generator.get_urgency_score(task.title, user_id) if task else 0.0)  # CHANGED: Ensure float
                 state = np.array([[num_events, (day_end - day_start).total_seconds() / 3600, urgency]])
                 predicted_duration = self.ridge_model.predict(state)[0]
                 return current_time + timedelta(minutes=SchedulingPolicy.clamp_duration(predicted_duration))

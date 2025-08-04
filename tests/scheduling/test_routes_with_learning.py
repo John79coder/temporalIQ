@@ -39,11 +39,9 @@ def test_preview_schedule_success(mock_fetch_user_events, authorized_client, db_
                 source='test'
             ))
         # Seed varied slot_choice events for TaskPrioritizer Ridge training
-        priority_weights = {0.0: None, 0.33: "low", 0.66: "medium", 1.0: "high"}
         for i in range(100):
             slot_start = f"2025-07-12T{random.randint(0, 23):02d}:{random.randint(0, 59):02d}:00Z"
-            urgency_float = random.uniform(0.0, 1.0)
-            urgency = priority_weights[min(priority_weights.keys(), key=lambda k: abs(k - urgency_float))]
+            urgency_float = random.uniform(0.0, 1.0)  # CHANGED: Use float directly
             duration = random.randint(15, 120)
             selected = random.choice([True, False])
             db_session.add(AITrainingEvent(
@@ -52,7 +50,7 @@ def test_preview_schedule_success(mock_fetch_user_events, authorized_client, db_
                 event_type='slot_choice',
                 input_json=SlotChoiceInput(
                     slot_start=slot_start,
-                    urgency=urgency,
+                    urgency=urgency_float,  # CHANGED: Now float
                     duration=duration
                 ).model_dump(),
                 label_json=SlotChoiceLabel(selected=selected).model_dump(),

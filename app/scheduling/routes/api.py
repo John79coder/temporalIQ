@@ -19,6 +19,8 @@ from sqlalchemy.orm import Session
 
 from app.utils.exceptions import AppError
 
+from app.scheduling.models.policies import get_urgency_float  # NEW: Import utility
+
 
 class RollbackError(DatabaseError):
     """Raised when rollback fails for iCloud events."""
@@ -93,14 +95,14 @@ def confirm_schedule():
         logging_service.error("Unexpected error in schedule confirm", user_id=data.user_id, extra={"error": str(e), "block_count": len(data.time_blocks), "task_count": len(task_map)})
         return make_handled_error_response(AppError, str(e), 500)
 
-@staticmethod
+
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
 def _delete_event_with_retry(client, calendar_id: str, uid: str, logging_service: LoggingService, user_id: int):
     """Retry deleting an event from iCloud."""
     client.delete_event(calendar_id, uid)
     logging_service.info("Rollback: Deleted event", user_id=user_id, extra={"uid": uid, "calendar_id": calendar_id})
 
-@staticmethod
+
 def _write_events(db: Session, user_id: int, calendar_id: str, blocks: List[TimeBlockIn], task_map: dict, event_service, logging_service: LoggingService) -> List[str]:
     """Write events to iCloud calendar."""
     uids = []
@@ -122,15 +124,17 @@ def _write_events(db: Session, user_id: int, calendar_id: str, blocks: List[Time
                 raise
     return uids
 
-@staticmethod
+
 def _log_training_events(db: Session, user_id: int, blocks: List[TimeBlockIn], task_map: dict, ai_data_service: AIDataService, logging_service: LoggingService):
     """Log slot choice and duration events to AI training data."""
     """Log slot choice and duration events to AI training data."""
+    from app.scheduling.models.policies import get_urgency_float  # NEW: Import utility
     try:
         for block in blocks:
             if block.task_id and block.task_id in task_map:
                 task = task_map[block.task_id]
                 duration = (block.end - block.start).total_seconds() / 60
+                urgency_float = get_urgency_float(task.priority)  # CHANGED: Convert to float using utility
                 events = [
                     AITrainingEvent(
                         user_id=user_id,
@@ -138,7 +142,7 @@ def _log_training_events(db: Session, user_id: int, blocks: List[TimeBlockIn], t
                         event_type='slot_choice',
                         input_json=SlotChoiceInput(
                             slot_start=block.start.isoformat(),
-                            urgency=task.priority,
+                            urgency=urgency_float,  # CHANGED: Now float
                             duration=duration
                         ).model_dump(),
                         label_json=SlotChoiceLabel(selected=True).model_dump(),
@@ -151,7 +155,7 @@ def _log_training_events(db: Session, user_id: int, blocks: List[TimeBlockIn], t
                         input_json=DurationLogInput(
                             num_events=len(task_map),
                             day_length_hours=current_app.extensions['app_context'].get_service('free_time_finder')._get_work_hours(db, user_id),
-                            urgency=task.priority or 0.0
+                            urgency=urgency_float  # CHANGED: Now float from converted priority
                         ).model_dump(),
                         label_json=DurationLogLabel(duration_minutes=duration).model_dump(),
                         source='user_confirm'
@@ -167,9 +171,6 @@ def _log_training_events(db: Session, user_id: int, blocks: List[TimeBlockIn], t
         raise wrap_external_error(e, DataValidationError, "Invalid training event data") from e
 
 
-
-
-@staticmethod
 def _rollback_on_failure(db: Session, user_id: int, calendar_id: str, uids: List[str], event_service, logging_service: LoggingService):
     """Rollback iCloud events on failure."""
     client = event_service.client_manager.get_caldav_client_for_user(db, user_id)

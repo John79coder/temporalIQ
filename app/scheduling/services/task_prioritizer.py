@@ -21,6 +21,9 @@ from tenacity import retry, stop_after_attempt, wait_exponential
 from sklearn.linear_model import Ridge
 from sklearn.model_selection import cross_val_score
 
+from app.scheduling.models.policies import get_urgency_float, PRIORITY_TO_WEIGHT  # NEW: Import mappings
+
+
 class TaskPrioritizer(ITaskPrioritizer):
     def __init__(self, caching_service: ICacheService, features_service: FeaturesService, preferences_service: PreferencesService, ai_data_service: AIDataService, logging_service: LoggingService):
         self.caching_service = caching_service
@@ -76,10 +79,11 @@ class TaskPrioritizer(ITaskPrioritizer):
                 try:
                     input_data = SlotChoiceInput(**event.input_json)
                     label_data = SlotChoiceLabel(**event.label_json)
+                    urgency_float = get_urgency_float(input_data.urgency)  # CHANGED: Convert to float
                     features.append([
                         input_data.duration,
-                        self.priority_weights.get(input_data.urgency, 0),
-                        input_data.urgency or 0.0
+                        PRIORITY_TO_WEIGHT.get(input_data.urgency, 0),  # CHANGED: Use str urgency for weight (int)
+                        urgency_float  # Now float
                     ])
                     labels.append(1 if label_data.selected else 0)
                 except ValueError as e:
@@ -123,7 +127,7 @@ class TaskPrioritizer(ITaskPrioritizer):
                 self._train_model(db, user_id)
 
             def sort_key(task: Task):
-                priority_score = self.priority_weights.get(task.priority, 0)
+                priority_score = PRIORITY_TO_WEIGHT.get(task.priority, 0)  # CHANGED: Use mapping for int
                 due_date_score = 0
                 if task.due_date:
                     try:
@@ -135,6 +139,7 @@ class TaskPrioritizer(ITaskPrioritizer):
                         self.logging_service.error("Invalid due_date for task", user_id=user_id, task_id=task.id, extra={"error": str(e)})
                 if use_ml:
                     try:
+                        urgency_float = get_urgency_float(task.urgency or task.priority)  # CHANGED: Prefer task.urgency float if set, else convert priority
                         features = np.array([[task.duration or 30, priority_score, due_date_score]])
                         ml_score = self.ridge_model.predict(features)[0]
                         return (-ml_score, -priority_score, due_date_score)

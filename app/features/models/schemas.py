@@ -1,3 +1,4 @@
+# app/features/models/schemas.py
 from pydantic import BaseModel, field_validator, Field, model_serializer, ConfigDict
 from typing import Optional
 from datetime import datetime
@@ -87,8 +88,14 @@ class DurationLogLabel(BaseModel):
 
 class SlotChoiceInput(BaseModel):
     slot_start: str
-    urgency: Optional[str]
+    urgency: float  # CHANGED: From Optional[str] to float for consistency
     duration: float
+
+    @field_validator("urgency")
+    def validate_urgency(cls, v: float) -> float:
+        if not 0.0 <= v <= 1.0:
+            raise ValueError("Urgency must be between 0.0 and 1.0")
+        return v
 
 class SlotChoiceLabel(BaseModel):
     selected: bool

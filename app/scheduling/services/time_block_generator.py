@@ -106,6 +106,8 @@ class TimeBlockGenerator(ITimeBlockGenerator):
         """Load task candidates and create tasks."""
         candidates = self._load_candidates(db, user_id, notion_db_id)
         tasks = self._create_tasks_from_candidates(candidates)
+        for task in tasks:
+            task.urgency = self.get_urgency_score(task.title, user_id)  # NEW: Set urgency float on task creation
         self._persist_tasks(db, tasks)
         return tasks
 
@@ -118,9 +120,7 @@ class TimeBlockGenerator(ITimeBlockGenerator):
                                                       latest_time)
         time_blocks = []
         for task in prioritized:
-            urgency = self._analyze_task_urgency(task.title,
-                                                 user_id) if settings.use_nlp_urgency else self._heuristic_urgency(
-                task.title)
+            urgency = task.urgency or self._heuristic_urgency(task.title)  # CHANGED: Use task.urgency float if set
             duration = task.duration or 30
             if SchedulingPolicy.should_prioritize_early(urgency):
                 slots = sorted(slots, key=lambda s: s.start)

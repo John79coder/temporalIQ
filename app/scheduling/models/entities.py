@@ -31,6 +31,7 @@ class Task(db.Model, TimestampMixin):
     duration = db.Column(db.Integer, nullable=True)
     priority = db.Column(db.String, nullable=True)
     status = db.Column(db.String, nullable=True)
+    urgency = db.Column(db.Float, nullable=True)  # NEW: Added float urgency for consistency in ML/computations
     __table_args__ = (
         db.Index('idx_task_user_id', 'user_id'),
         db.Index('idx_task_notion_db_id', 'notion_db_id'),

@@ -36,8 +36,7 @@ class PageTaskExtractionEngine:
         self.sectionizer = Sectionizer()
         self.aggregator = PageAggregator(preferences_service)
         self.sentence_splitter = SentenceSplitter()
-        # Initialize registry with all extractors (reusing codebase patterns)
-        self.registry = DetectorRegistry(features_service, None, None)  # Reuse base registry
+        self.registry = DetectorRegistry(features_service, None, None)
         self._register_extractors()
         self.extractor_aggregator = FieldDetectorAggregator(self.registry)
 
@@ -215,53 +214,41 @@ class PageTaskExtractionEngine:
             "text": [{"plain_text": text}]
         }
 
-    def _extract_text_from_block(block: dict) -> str:
-        """
-        Extracts plain text content from a Notion block.
-        Looks into standard rich_text-bearing fields like paragraph, to_do, heading_1, etc.
-        """
+    def _extract_text_from_block(self, block: dict) -> str:
+        """Recursively extracts plain text from a block and its children/caption."""
         if not isinstance(block, dict):
             return ""
 
-        for block_type in ['paragraph', 'to_do', 'heading_1', 'heading_2', 'heading_3', 'bulleted_list_item',
-                           'numbered_list_item']:
-            if block.get('type') == block_type:
-                rich_text = block.get(block_type, {}).get('rich_text', [])
-                return "".join([rt.get('plain_text', '') for rt in rich_text]).strip()
+        block_type = block.get('type')
+        main_text = ""
 
-        return ""
+        # Rich_text types (main content)
+        rich_types = [
+            'paragraph', 'to_do', 'heading_1', 'heading_2', 'heading_3',
+            'bulleted_list_item', 'numbered_list_item', 'toggle', 'callout',
+            'quote', 'code'
+        ]
+        if block_type in rich_types:
+            rich_text = block.get(block_type, {}).get('rich_text', [])
+            main_text = "".join([rt.get('plain_text', '') for rt in rich_text]).strip()
 
-    def _remove_matched_spans(self, text: str, matches: list[FieldMatch]) -> str:
-        """
-        Remove substrings from `text` that are matched by extractors.
-        Attempts exact match removal first. If overlapping spans, removes largest first.
-        """
+        # Caption types (for media/non-text)
+        caption_types = ['image', 'video', 'embed', 'file', 'pdf', 'equation', 'bookmark']
+        if block_type in caption_types:
+            caption = block.get(block_type, {}).get('caption', [])  # bookmark uses 'caption' too
+            main_text = "".join([rt.get('plain_text', '') for rt in caption]).strip()
 
-        # Track match spans by locating them in the text
-        spans = []
-        for match in matches:
-            pattern = re.escape(match.value)
-            for m in re.finditer(pattern, text):
-                spans.append((m.start(), m.end()))
-                break  # Only the first occurrence per match to avoid over-deleting
+        # For code: Optional prepend language for context (e.g., "python: code here")
+        if block_type == 'code':
+            language = block.get('code', {}).get('language', '')
+            if language:
+                main_text = f"[{language}] {main_text}"
 
-        if not spans:
-            return text  # Nothing found to remove
+        # Recurse on children if present (e.g., for toggle/callout/code with nested)
+        child_text = ""
+        if block.get('has_children') and 'children' in block:  # Assuming fetch populates children
+            child_text = " ".join(self._extract_text_from_block(child) for child in block['children'] if child)
 
-        # Merge and sort spans to avoid overlaps
-        spans.sort()  # sort by start position
-        cleaned_spans = []
-        last_end = -1
-        for start, end in spans:
-            if start >= last_end:
-                cleaned_spans.append((start, end))
-                last_end = end
-
-        # Remove spans from text by walking backwards
-        new_text = text
-        for start, end in reversed(cleaned_spans):
-            new_text = new_text[:start] + new_text[end:]
-
-        # Cleanup: collapse double spaces, strip
-        new_text = re.sub(r'\s{2,}', ' ', new_text).strip()
-        return new_text
+        # Combine: main + children (separated by newline for structure)
+        combined = main_text + ("\n" + child_text if child_text else "")
+        return combined.strip()

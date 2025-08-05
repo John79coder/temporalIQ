@@ -23,7 +23,6 @@ from app.notion.smart_mapping.page_value_extractors.priority_extractor import Pr
 
 import re
 from typing import List
-from app.notion.smart_mapping.models import FieldMatch  # Adjust as needed
 from app.notion.smart_mapping.partial_candidate_stitcher import PageAggregator
 from app.user_preferences.preferences_store.service import PreferencesService
 
@@ -52,7 +51,7 @@ class NotionPageEngine:
         self.registry.register_detector(DescriptionExtractor(self.features_service))
 
 
-    def generate_candidates(self, blocks: List[Dict], db: Session, user_id: int, page_id: str) -> List[
+    def generate_candidates(self, blocks: List[Dict], db: Session, user_id: int, page_id: str, force_single_task: bool) -> List[
         TaskCandidateData]:
         settings = self.features_service.get_settings(db, user_id)
         if not settings.use_ai_page_extraction:
@@ -70,7 +69,8 @@ class NotionPageEngine:
             except Exception as e:
                 logging.error(f"Extraction failed for section: {str(e)}")
 
-        candidates = self.aggregator.aggregate(partials, user_id, page_id, db)
+        candidates = self.aggregator.aggregate(partials, user_id, page_id, db, sections, force_single_task)
+
         return candidates
 
     def _extract_from_section(self, section: BlockSection, db: Session, user_id: int, app) -> List[PartialCandidate]:

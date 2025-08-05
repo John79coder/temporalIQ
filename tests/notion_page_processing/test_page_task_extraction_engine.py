@@ -27,10 +27,11 @@ def test_generate_candidates_from_page_blocks(mock_current_app, page_engine, moc
     ])
     page_engine.sectionizer.segment.return_value = [section]
 
-    page_engine.aggregator.aggregate.return_value = [
+    expected_candidates = [
         TaskCandidateData(
             user_id=1,
-            notion_db_id="p123",
+            notion_db_id=None,  # Updated: Align with page-based extraction (notion_db_id=None)
+            page_id="p123",
             title="Quarterly Report",
             confidence=0.85,
             issues=[],
@@ -39,11 +40,24 @@ def test_generate_candidates_from_page_blocks(mock_current_app, page_engine, moc
         )
     ]
 
+    # Fix: Mock aggregate to handle all six arguments
+    page_engine.aggregator.aggregate.side_effect = lambda partials, uid, pid, db, sections, force: expected_candidates
+
     mock_settings = MagicMock()
     mock_settings.use_ai_page_extraction = True
+    mock_settings.use_sentence_splitter = True  # Ensure splitter is toggled on if needed
     mock_features_service.get_settings.return_value = mock_settings
 
-    candidates = page_engine.generate_candidates("p123", [{"type": "paragraph", "text": [{"plain_text": "Finish quarterly report by Friday."}]}], db_session, "1")
+    # Fix: Correct call with proper args
+    candidates = page_engine.generate_candidates(
+        blocks=[{"type": "paragraph", "text": [{"plain_text": "Finish quarterly report by Friday."}]}],
+        db=db_session,
+        user_id=1,
+        page_id="p123",
+        force_single_task=False
+    )
+
     assert len(candidates) == 1
     assert candidates[0].title == "Quarterly Report"
     assert candidates[0].duration == 60
+    assert candidates[0].confidence == 0.85

@@ -1,9 +1,11 @@
+from collections import defaultdict
 from typing import List
 
 from requests.sessions import Session
 
 from app.notion.models.schemas import PartialCandidate
 from app.notion.smart_mapping.models import TaskCandidateData
+from app.notion.smart_mapping.sectionizer import BlockSection
 from app.user_preferences.preferences_store.service import PreferencesService
 from app.utils.time_zone import TimeZone
 
@@ -12,7 +14,8 @@ class PageAggregator:
     def __init__(self, preferences_service: PreferencesService):
         self.preferences_service = preferences_service
 
-    def aggregate(self, partials: List[PartialCandidate], user_id: int, page_id: str, db: Session) -> List[TaskCandidateData]:
+    def aggregate(self, partials: List[PartialCandidate], user_id: int, page_id: str, db: Session,
+                  sections: List[BlockSection], force_single_task: bool) -> List[TaskCandidateData]:
         stitched: List[TaskCandidateData] = []
         buffer: List[PartialCandidate] = []
 
@@ -24,7 +27,6 @@ class PageAggregator:
             if not buffer:
                 buffer.append(curr)
                 continue
-
             prev = buffer[-1]
             if self.is_mergeable(prev, curr):
                 buffer.append(curr)
@@ -33,6 +35,11 @@ class PageAggregator:
                 buffer = [curr]
 
         flush_buffer()
+
+        # New: Merge candidates if user toggled single-task or page inferred as single-task
+        if force_single_task or all(s.is_single_task for s in sections):
+            return self.merge_candidates(stitched)
+
         return stitched
 
 
@@ -96,7 +103,7 @@ class PageAggregator:
             if partial_candidate.due_date:
                 user_preferences = self.preferences_service.get_preferences(db, user_id)
                 time_zone = user_preferences.time_zone
-                task_candidate.due_date = TimeZone.serialize_datetime(TimeZone.to_utc(partial_candidate.due_date, time_zone))
+                task_candidate.due_date = TimeZone.to_utc(partial_candidate.due_date, time_zone)
 
             if partial_candidate.duration: task_candidate.duration = partial_candidate.duration
             if partial_candidate.priority: task_candidate.priority = partial_candidate.priority
@@ -108,3 +115,79 @@ class PageAggregator:
         task_candidate.confidence = max_conf or 0.5
 
         return task_candidate
+
+    def merge_candidates(self, candidates: List[TaskCandidateData]) -> List[TaskCandidateData]:
+        if not candidates:
+            return []
+
+        # Check for non-overlapping attributes (no conflicts across fields)
+        field_values = defaultdict(set)  # Track unique non-None values per field
+        has_conflict = False
+        issues = set()  # Collect potential conflict issues
+
+        for cand in candidates:
+            for field in ['title', 'due_date', 'duration', 'priority', 'status']:
+                value = getattr(cand, field, None)
+                if value is not None:
+                    if field_values[field] and value not in field_values[field]:
+                        has_conflict = True
+                        issues.add(
+                            f"Conflict in {field}: multiple values found (e.g., {value} vs. {next(iter(field_values[field]))})")
+                    field_values[field].add(value)
+            # For lists like tags/issues, union later; no conflict check needed
+
+        if has_conflict:
+            # Flag conflicts but don't merge; return originals with added issues
+            for cand in candidates:
+                cand.issues.extend(list(issues))
+            return candidates
+
+        # No conflicts: Merge into one coherent task
+        merged = TaskCandidateData(
+            user_id=candidates[0].user_id,
+            notion_db_id=None,
+            page_id=candidates[0].page_id,
+            source_block_ids=list(set(id for c in candidates for id in (c.source_block_ids or []))),
+            verified=False,
+            title="Untitled",
+            confidence=0.5,
+            issues=[],
+            due_date=None,
+            duration=None,
+            priority=None,
+            status=None,
+            tags=[],
+            alternatives={}
+        )
+        merged.created_at = TimeZone.utc_now()
+
+        max_conf = 0.0
+        tag_set = set()
+        issue_set = set()
+        alternatives = {}
+
+        for cand in candidates:
+            if cand.title and cand.title != "Untitled":
+                merged.title = cand.title  # Prefer non-default; last wins, but no conflict, so at most one
+            if cand.due_date:
+                merged.due_date = cand.due_date  # At most one due to no-overlap check
+            if cand.duration:
+                merged.duration = cand.duration
+            if cand.priority:
+                merged.priority = cand.priority
+            if cand.status:
+                merged.status = cand.status
+            if cand.tags:
+                tag_set.update(cand.tags)
+            if cand.issues:
+                issue_set.update(cand.issues)
+            if cand.alternatives:
+                alternatives.update(cand.alternatives)
+            max_conf = max(max_conf, cand.confidence)
+
+        merged.tags = list(tag_set)
+        merged.issues = list(issue_set)
+        merged.alternatives = alternatives
+        merged.confidence = max_conf or 0.5
+
+        return [merged]

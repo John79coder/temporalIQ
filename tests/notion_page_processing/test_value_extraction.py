@@ -1,7 +1,8 @@
 import pytest
+
+from app.notion.models.schemas import PartialCandidate
 from app.notion.smart_mapping.page_value_extractors.title_extractor import TitleExtractor
 from app.notion.smart_mapping.page_value_extractors.due_date_extractor import DueDateExtractor
-from app.notion.smart_mapping.page_value_extractors.priority_extractor import PriorityExtractor
 from app.notion.smart_mapping.page_value_extractors.duration_extractor import DurationExtractor
 from app.notion.smart_mapping.page_value_extractors.urgency_classifier import UrgencyClassifier
 from app.notion.smart_mapping.page_value_extractors.completion_extractor import CompletionExtractor
@@ -9,11 +10,8 @@ from app.notion.smart_mapping.page_value_extractors.tag_extractor import TagExtr
 from app.notion.smart_mapping.page_value_extractors.description_extractor import DescriptionExtractor
 from app.features.services.service import FeaturesService
 from app.features.models.entities import UserAISettings
-from unittest.mock import patch, MagicMock
-from app.notion.smart_mapping.models import TaskCandidateData
-from app.notion.smart_mapping.notion_page_engine import NotionPageEngine, BlockSection
+from app.notion.smart_mapping.notion_page_engine import NotionPageEngine
 from app.notion.smart_mapping.sectionizer import BlockSection
-from unittest.mock import patch, MagicMock
 from app.notion.smart_mapping.models import TaskCandidateData
 
 from sqlalchemy.orm import Session
@@ -206,9 +204,9 @@ def mock_engine(mock_features_service):
 
 
 @patch("app.notion.smart_mapping.notion_page_engine.current_app")
-@patch("app.notion.smart_mapping.notion_page_engine.FieldDetectorAggregator")
+@patch("app.notion.smart_mapping.partial_candidate_stitcher.PageAggregator.aggregate")  # New: Patch aggregate directly
 @patch("app.notion.smart_mapping.page_value_extractors.title_extractor.TitleExtractor")
-@patch("app.notion.smart_mapping.page_value_extractors.urgency_classifier.UrgencyClassifier")
+@patch("app.notion.smart_mapping.page_value_extractors.urgency_classifier.pipeline")  # New: Mock pipeline
 @patch("app.notion.smart_mapping.page_value_extractors.completion_extractor.CompletionExtractor")
 @patch("app.notion.smart_mapping.page_value_extractors.tag_extractor.TagExtractor")
 @patch("app.notion.smart_mapping.page_value_extractors.description_extractor.DescriptionExtractor")
@@ -217,32 +215,28 @@ def mock_engine(mock_features_service):
 @patch("app.notion.smart_mapping.page_value_extractors.priority_extractor.PriorityExtractor")
 def test_page_task_extraction_engine_generate_candidates(
     MockPriority, MockDuration, MockDueDate, MockDescription, MockTag,
-    MockCompletion, MockUrgency, MockTitle,
-    MockFieldDetectorAggregator, mock_current_app,
+    MockCompletion, mock_pipeline, MockTitle,  # Reordered for clarity
+    mock_aggregate, mock_current_app,  # New: Use mock_aggregate
     mock_features_service, mock_db
 ):
-    # Mock app context for threading
     mock_app_context = MagicMock()
     mock_current_app._get_current_object.return_value.app_context.return_value.__enter__.return_value = mock_app_context
 
-    # Mock get_settings to enable AI extraction
     mock_settings = MagicMock()
     mock_settings.use_ai_page_extraction = True
+    mock_settings.use_sentence_splitter = True
     mock_features_service.get_settings.return_value = mock_settings
 
-    # Mock sectionizer to return a simple section
     mock_section = BlockSection([{'type': 'heading_1', 'text': [{'plain_text': 'Test Title'}]}])
-
-    # Create engine and override sectionizer/aggregator
     engine = NotionPageEngine(MagicMock(), mock_features_service, MagicMock(), MagicMock())
     engine.sectionizer = MagicMock()
     engine.sectionizer.segment.return_value = [mock_section]
 
-    engine.aggregator = MagicMock()
-    engine.aggregator.aggregate.return_value = [
+    expected_candidates = [
         TaskCandidateData(
             user_id=1,
-            notion_db_id="test_db",
+            notion_db_id=None,
+            page_id="page1",
             title="Test",
             confidence=0.7,
             issues=[],
@@ -251,18 +245,18 @@ def test_page_task_extraction_engine_generate_candidates(
         )
     ]
 
-    # Patch the extractor aggregator's detect method
-    mock_detector_instance = MagicMock()
-    mock_detector_instance.detect.return_value = [
-        {'title': 'Test', 'confidence': 0.8}
-    ]
-    MockFieldDetectorAggregator.return_value = mock_detector_instance
+    # Fix: Set side_effect on mocked aggregate
+    mock_aggregate.side_effect = lambda partials, uid, pid, db, sections, force: expected_candidates
 
-    # Run test
+    # Mock TitleExtractor to return a title
+    MockTitle.return_value.extract.return_value = PartialCandidate(title="Test", confidence=0.8)
+
+    # Mock UrgencyClassifier pipeline to suppress warnings
+    mock_pipeline.return_value = lambda text: [{'score': 0.7}]
+
     blocks = [{'type': 'heading_1', 'text': [{'plain_text': 'Test Title'}]}]
-    candidates = engine.generate_candidates(blocks, mock_db, 1, "page1")
+    candidates = engine.generate_candidates(blocks, mock_db, user_id=1, page_id="page1", force_single_task=False)
 
-    # Assert results
     assert len(candidates) == 1
     assert candidates[0].title == "Test"
     assert candidates[0].confidence == 0.7
@@ -270,7 +264,7 @@ def test_page_task_extraction_engine_generate_candidates(
 
 def test_page_task_extraction_engine_ai_off(mock_engine, mock_db):
     mock_engine.features_service.get_settings.return_value.use_ai_page_extraction = False
-    candidates = mock_engine.generate_candidates([], mock_db, 1, "page1")
+    candidates = mock_engine.generate_candidates([], mock_db, 1, "page1", False)
     assert candidates == []
 
 
@@ -279,17 +273,14 @@ def test_page_task_extraction_engine_ai_off(mock_engine, mock_db):
 @patch("app.notion.smart_mapping.notion_page_engine.current_app")
 @patch("app.notion.smart_mapping.notion_page_engine.FieldDetectorAggregator")
 def test_page_task_extraction_engine_multi_task(MockFieldDetectorAggregator, mock_current_app, mock_db):
-    # --- Mock Flask app context for threading
     mock_app_context = MagicMock()
     mock_current_app._get_current_object.return_value.app_context.return_value.__enter__.return_value = mock_app_context
 
-    # --- Mock features_service and settings
     mock_features_service = MagicMock()
     mock_settings = MagicMock()
     mock_settings.use_ai_page_extraction = True
     mock_features_service.get_settings.return_value = mock_settings
 
-    # --- Mock detector aggregator's detect to return unique results per section
     mock_detector_instance = MagicMock()
     mock_detector_instance.detect.side_effect = [
         [{'title': 'Task A', 'confidence': 0.7}],
@@ -297,28 +288,23 @@ def test_page_task_extraction_engine_multi_task(MockFieldDetectorAggregator, moc
     ]
     MockFieldDetectorAggregator.return_value = mock_detector_instance
 
-    # --- Instantiate engine and replace components
     engine = NotionPageEngine(MagicMock(), mock_features_service, MagicMock(), MagicMock())
-
-    # Mock sectionizer: simulate two logical sections
     engine.sectionizer = MagicMock()
     engine.sectionizer.segment.return_value = [
         BlockSection([{'type': 'heading_1', 'text': [{'plain_text': 'Task A'}]}]),
         BlockSection([{'type': 'heading_1', 'text': [{'plain_text': 'Task B'}]}])
     ]
-
-    # Mock aggregator to produce final TaskCandidate list
     engine.aggregator = MagicMock()
     engine.aggregator.aggregate.return_value = [
         TaskCandidateData(user_id=1, notion_db_id="test_db", title="Task A", confidence=0.7, issues=[], duration=None, due_date=None),
         TaskCandidateData(user_id=1, notion_db_id="test_db", title="Task B", confidence=0.7, issues=[], duration=None, due_date=None),
     ]
+    # ✅ Fixed line
+    engine.aggregator.merge_candidates_if_single = MagicMock(side_effect=lambda x, _: x)
 
-    # --- Run test
     blocks = [{'type': 'heading_1', 'text': [{'plain_text': 'Fake heading'}]}]
-    candidates = engine.generate_candidates(blocks, mock_db, user_id=1, page_id="page1")
+    candidates = engine.generate_candidates(blocks, mock_db, user_id=1, page_id="page1", force_single_task=False)
 
-    # --- Assertions
     assert len(candidates) == 2
     titles = [c.title for c in candidates]
     assert "Task A" in titles

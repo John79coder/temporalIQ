@@ -264,6 +264,8 @@ def generate_from_page() -> Response:
     if not page_id:
         return make_handled_error_response(DataValidationError, "Missing page_id", 400)
 
+    force_single_task = data.get("force_single_task", False)
+
     try:
         conn = get_notion_connection(g.current_user.id)
         if not conn:
@@ -286,7 +288,7 @@ def generate_from_page() -> Response:
             )
 
         candidates = current_app.extensions['app_context'].get_service('page_extraction_engine').generate_candidates(
-            blocks, g.db, g.current_user.id, page_id
+            blocks, g.db, g.current_user.id, page_id, force_single_task
         )
 
         current_app.extensions['app_context'].get_service('mapping_service').save_task_candidates(g.db, candidates)

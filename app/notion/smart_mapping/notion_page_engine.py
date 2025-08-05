@@ -81,31 +81,30 @@ class NotionPageEngine:
 
             for block_index in range(len(section.blocks)):
                 block = section.blocks[block_index]
-                raw_text = self._extract_text_from_block(block)
+                raw_text = self._extract_text_from_block(block)  # Now expanded and recursive
 
-                # New: Preprocess with sentence splitter if enabled
-                if True:  # Assuming this toggle is added to FeaturesService
-                    segments = self.sentence_splitter.split_into_tasks(raw_text)
-                else:
-                    segments = [raw_text]  # Fallback to original: treat full text as one segment
+                segments = self.sentence_splitter.split_into_tasks(raw_text) if settings.use_sentence_splitter else [
+                    raw_text]
 
-                segment_span_base = 0  # New: Base for span_index per segment, increments across
+                segment_span_base = 0
 
                 for segment in segments:
                     if not segment.strip():
-                        continue  # Skip empty segments from splitter
-
+                        continue
                     remaining_text = segment
-                    span_index = segment_span_base  # Start span_index from base for this segment
+                    span_index = segment_span_base
+                    iters = 0  # New: Iteration counter for safeguard
+                    previous_text = ""  # New: Track for progress detection
 
-                    while remaining_text:
+                    while remaining_text and iters < 20:  # New: Max 20 iterations per segment
+                        previous_text = remaining_text
+                        iters += 1
                         partial = PartialCandidate(confidence=0.5)
                         total_conf = 0.0
                         count = 0
 
                         for extractor in self.registry.get_detectors():
                             extracted = extractor.extract([self._block_from_text(remaining_text)], db, user_id)
-                            # Merge fields from extracted PartialCandidate (unchanged)
                             if extracted.title:
                                 partial.title = extracted.title
                             if extracted.due_date:
@@ -127,7 +126,6 @@ class NotionPageEngine:
                                 count += 1
 
                         partial.confidence = total_conf / count if count > 0 else 0.5
-
                         partial.block_id = block.get("id")
                         partial.block_index = block_index
                         partial.span_index = span_index
@@ -143,10 +141,15 @@ class NotionPageEngine:
                                     partial.priority, partial.status, partial.tags, partial.urgency != 0.5]):
                             break
 
+                        if remaining_text == previous_text:
+                            logging.warning(
+                                f"No progress in extraction for block {block.get('id')}; breaking to prevent stall")
+                            break
+
                         span_index += 1
                         extraction_order += 1
 
-                    segment_span_base = span_index  # Update base for next segment (maintains sequence)
+                    segment_span_base = span_index
 
             return partials
 

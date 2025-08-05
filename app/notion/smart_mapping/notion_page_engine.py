@@ -12,7 +12,6 @@ from app.features.services.service import FeaturesService
 from sqlalchemy.orm import Session
 from typing import Dict
 from app.notion.smart_mapping.models import TaskCandidateData
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import logging
 from flask import current_app
 
@@ -30,13 +29,13 @@ from app.user_preferences.preferences_store.service import PreferencesService
 
 
 class NotionPageEngine:
-    def __init__(self, caching_service: ICacheService, features_service: FeaturesService, preferences_service: PreferencesService):
+    def __init__(self, caching_service: ICacheService, features_service: FeaturesService, preferences_service: PreferencesService, detector_registry: DetectorRegistry):
         self.caching_service = caching_service
         self.features_service = features_service
         self.sectionizer = Sectionizer()
         self.aggregator = PageAggregator(preferences_service)
         self.sentence_splitter = SentenceSplitter()
-        self.registry = DetectorRegistry(features_service, None, None)
+        self.registry = detector_registry
         self._register_extractors()
         self.extractor_aggregator = FieldDetectorAggregator(self.registry)
 

@@ -14,9 +14,10 @@ def mock_features_service():
 
 @pytest.fixture
 def page_engine(mock_features_service):
-    engine = NotionPageEngine(MagicMock(), mock_features_service, MagicMock())
+    engine = NotionPageEngine(MagicMock(), mock_features_service, MagicMock(), MagicMock())
     engine.sectionizer = MagicMock()
     engine.aggregator = MagicMock()
+    engine.registry = MagicMock()
     return engine
 
 @patch("app.notion.smart_mapping.notion_page_engine.current_app")

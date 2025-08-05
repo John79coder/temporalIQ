@@ -185,7 +185,7 @@ def test_description_extractor_without_spacy(mock_features_service, mock_db, moc
 
 @pytest.fixture
 def mock_engine(mock_features_service):
-    engine = NotionPageEngine(MagicMock(), mock_features_service, MagicMock())
+    engine = NotionPageEngine(MagicMock(), mock_features_service, MagicMock(), MagicMock())
     # Mock aggregator and sectionizer for isolation
     engine.sectionizer = MagicMock()
     engine.sectionizer.segment.return_value = [BlockSection([{'type': 'heading_1', 'text': [{'plain_text': 'Title'}]}])]
@@ -234,7 +234,7 @@ def test_page_task_extraction_engine_generate_candidates(
     mock_section = BlockSection([{'type': 'heading_1', 'text': [{'plain_text': 'Test Title'}]}])
 
     # Create engine and override sectionizer/aggregator
-    engine = NotionPageEngine(MagicMock(), mock_features_service, MagicMock())
+    engine = NotionPageEngine(MagicMock(), mock_features_service, MagicMock(), MagicMock())
     engine.sectionizer = MagicMock()
     engine.sectionizer.segment.return_value = [mock_section]
 
@@ -298,7 +298,7 @@ def test_page_task_extraction_engine_multi_task(MockFieldDetectorAggregator, moc
     MockFieldDetectorAggregator.return_value = mock_detector_instance
 
     # --- Instantiate engine and replace components
-    engine = NotionPageEngine(MagicMock(), mock_features_service, MagicMock())
+    engine = NotionPageEngine(MagicMock(), mock_features_service, MagicMock(), MagicMock())
 
     # Mock sectionizer: simulate two logical sections
     engine.sectionizer = MagicMock()

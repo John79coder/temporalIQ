@@ -144,13 +144,13 @@ class ServiceFactory:
         # Initialize detector registry and mapping engine
         try:
             features_service = user_services['features_service']
-            registry = DetectorRegistry(
+            detector_registry = DetectorRegistry(
                 features_service,
                 ai_data_service,
                 logging_service
             ).initialize_default_detectors()
 
-            detector_aggregator = FieldDetectorAggregator(registry)
+            detector_aggregator = FieldDetectorAggregator(detector_registry)
 
             mapping_engine = NotionDatabaseEngine(
                 caching_service,
@@ -171,7 +171,8 @@ class ServiceFactory:
             page_extraction_engine = NotionPageEngine(
                 caching_service,
                 features_service,
-                user_services['preferences_service']
+                user_services['preferences_service'],
+                detector_registry
             )
             logger.info("Page extraction engine initialized")
         except Exception as e:

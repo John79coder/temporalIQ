@@ -9,6 +9,13 @@ from app.notion.smart_mapping.page_value_extractors.tag_extractor import TagExtr
 from app.notion.smart_mapping.page_value_extractors.description_extractor import DescriptionExtractor
 from app.features.services.service import FeaturesService
 from app.features.models.entities import UserAISettings
+from unittest.mock import patch, MagicMock
+from app.notion.smart_mapping.models import TaskCandidateData
+from app.notion.smart_mapping.notion_page_engine import NotionPageEngine, BlockSection
+from app.notion.smart_mapping.sectionizer import BlockSection
+from unittest.mock import patch, MagicMock
+from app.notion.smart_mapping.models import TaskCandidateData
+
 from sqlalchemy.orm import Session
 from datetime import datetime
 from app.utils.time_zone import TimeZone
@@ -178,7 +185,7 @@ def test_description_extractor_without_spacy(mock_features_service, mock_db, moc
 
 @pytest.fixture
 def mock_engine(mock_features_service):
-    engine = PageTaskExtractionEngine(MagicMock(), mock_features_service, MagicMock())
+    engine = NotionPageEngine(MagicMock(), mock_features_service, MagicMock())
     # Mock aggregator and sectionizer for isolation
     engine.sectionizer = MagicMock()
     engine.sectionizer.segment.return_value = [BlockSection([{'type': 'heading_1', 'text': [{'plain_text': 'Title'}]}])]
@@ -197,21 +204,9 @@ def mock_engine(mock_features_service):
 
     return engine
 
-from unittest.mock import MagicMock, patch
-from app.notion.smart_mapping.page_task_extraction_engine import PageTaskExtractionEngine
-from app.notion.smart_mapping.models import TaskCandidateData
-from app.notion.smart_mapping.sectionizer import BlockSection
-from app.notion.models.schemas import PartialCandidate
 
-
-from unittest.mock import patch, MagicMock
-from app.notion.smart_mapping.models import TaskCandidateData
-from app.notion.smart_mapping.page_task_extraction_engine import PageTaskExtractionEngine, BlockSection
-from app.notion.models.schemas import PartialCandidate
-
-
-@patch("app.notion.smart_mapping.page_task_extraction_engine.current_app")
-@patch("app.notion.smart_mapping.page_task_extraction_engine.FieldDetectorAggregator")
+@patch("app.notion.smart_mapping.notion_page_engine.current_app")
+@patch("app.notion.smart_mapping.notion_page_engine.FieldDetectorAggregator")
 @patch("app.notion.smart_mapping.page_value_extractors.title_extractor.TitleExtractor")
 @patch("app.notion.smart_mapping.page_value_extractors.urgency_classifier.UrgencyClassifier")
 @patch("app.notion.smart_mapping.page_value_extractors.completion_extractor.CompletionExtractor")
@@ -239,7 +234,7 @@ def test_page_task_extraction_engine_generate_candidates(
     mock_section = BlockSection([{'type': 'heading_1', 'text': [{'plain_text': 'Test Title'}]}])
 
     # Create engine and override sectionizer/aggregator
-    engine = PageTaskExtractionEngine(MagicMock(), mock_features_service, MagicMock())
+    engine = NotionPageEngine(MagicMock(), mock_features_service, MagicMock())
     engine.sectionizer = MagicMock()
     engine.sectionizer.segment.return_value = [mock_section]
 
@@ -278,13 +273,11 @@ def test_page_task_extraction_engine_ai_off(mock_engine, mock_db):
     candidates = mock_engine.generate_candidates([], mock_db, 1, "page1")
     assert candidates == []
 
-from unittest.mock import patch, MagicMock
-from app.notion.smart_mapping.models import TaskCandidateData
-from app.notion.smart_mapping.page_task_extraction_engine import PageTaskExtractionEngine, BlockSection
 
 
-@patch("app.notion.smart_mapping.page_task_extraction_engine.current_app")
-@patch("app.notion.smart_mapping.page_task_extraction_engine.FieldDetectorAggregator")
+
+@patch("app.notion.smart_mapping.notion_page_engine.current_app")
+@patch("app.notion.smart_mapping.notion_page_engine.FieldDetectorAggregator")
 def test_page_task_extraction_engine_multi_task(MockFieldDetectorAggregator, mock_current_app, mock_db):
     # --- Mock Flask app context for threading
     mock_app_context = MagicMock()
@@ -305,7 +298,7 @@ def test_page_task_extraction_engine_multi_task(MockFieldDetectorAggregator, moc
     MockFieldDetectorAggregator.return_value = mock_detector_instance
 
     # --- Instantiate engine and replace components
-    engine = PageTaskExtractionEngine(MagicMock(), mock_features_service, MagicMock())
+    engine = NotionPageEngine(MagicMock(), mock_features_service, MagicMock())
 
     # Mock sectionizer: simulate two logical sections
     engine.sectionizer = MagicMock()

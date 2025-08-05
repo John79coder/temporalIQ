@@ -11,7 +11,7 @@ from typing import List
 from app.features.services.service import FeaturesService
 
 
-class MappingEngine:
+class NotionDatabaseEngine:
     def __init__(self, caching_service: ICacheService, schema_parser: SchemaParser,
                  detector_aggregator: FieldDetectorAggregator, candidate_generator: CandidateGenerator, features_service: FeaturesService):
         self.caching_service = caching_service

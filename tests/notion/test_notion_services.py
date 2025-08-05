@@ -8,7 +8,7 @@ from flask import g
 from app.notion.auth.service import NotionAuthService
 from app.notion.mapping_storage.service import MappingService
 from app.notion.mapping_storage.repository import MappingRepository
-from app.notion.smart_mapping.engine import MappingEngine
+from app.notion.smart_mapping.notion_database_engine import NotionDatabaseEngine
 from app.notion.smart_mapping.schema_parser import SchemaParser
 from app.notion.smart_mapping.field_detector_aggregator import FieldDetectorAggregator
 from app.notion.models.entities import NotionConnection, FieldMapping

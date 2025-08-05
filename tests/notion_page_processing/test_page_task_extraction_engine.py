@@ -3,7 +3,7 @@ from unittest.mock import MagicMock, patch
 
 from app.features.models.entities import UserAISettings
 from app.features.services.service import FeaturesService
-from app.notion.smart_mapping.page_task_extraction_engine import PageTaskExtractionEngine, BlockSection
+from app.notion.smart_mapping.notion_page_engine import NotionPageEngine, BlockSection
 from app.notion.smart_mapping.models import TaskCandidateData
 
 @pytest.fixture
@@ -14,12 +14,12 @@ def mock_features_service():
 
 @pytest.fixture
 def page_engine(mock_features_service):
-    engine = PageTaskExtractionEngine(MagicMock(), mock_features_service, MagicMock())
+    engine = NotionPageEngine(MagicMock(), mock_features_service, MagicMock())
     engine.sectionizer = MagicMock()
     engine.aggregator = MagicMock()
     return engine
 
-@patch("app.notion.smart_mapping.page_task_extraction_engine.current_app")
+@patch("app.notion.smart_mapping.notion_page_engine.current_app")
 def test_generate_candidates_from_page_blocks(mock_current_app, page_engine, mock_features_service, db_session):
     section = BlockSection([
         {"type": "paragraph", "text": [{"plain_text": "Finish quarterly report by Friday."}]}

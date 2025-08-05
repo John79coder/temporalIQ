@@ -1,7 +1,7 @@
 # tests/integration/test_integration.py
 from unittest.mock import patch
 
-from app.notion.smart_mapping.engine import MappingEngine
+from app.notion.smart_mapping.notion_database_engine import NotionDatabaseEngine
 from app.notion.smart_mapping.detector_registry import DetectorRegistry
 from app.notion.smart_mapping.field_detector_aggregator import FieldDetectorAggregator
 from app.notion.smart_mapping.schema_parser import SchemaParser

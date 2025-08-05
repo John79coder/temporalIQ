@@ -1,5 +1,8 @@
 # app/utils/service_factory.py
 from flask_caching import Cache
+
+from app.notion.smart_mapping.notion_database_engine import NotionDatabaseEngine
+from app.notion.smart_mapping.notion_page_engine import NotionPageEngine
 from app.utils.security import SecurityService
 from app.auth.session_manager.service import AuthenticationService
 from app.auth.session_manager.repository import UserRepository
@@ -14,7 +17,6 @@ from app.notion.repositories.repository import NotionAuthRepository
 from app.notion.mapping_storage.service import MappingService
 from app.notion.mapping_storage.repository import MappingRepository
 from app.notion.mapping_storage.feedback import FeedbackService, FeedbackRepository
-from app.notion.smart_mapping.engine import MappingEngine
 from app.user_preferences.preferences_store.service import PreferencesService
 from app.user_preferences.preferences_store.repository import PreferencesRepository
 from app.scheduling.services.free_time_finder import FreeTimeFinder
@@ -35,8 +37,6 @@ from app.notion.smart_mapping.task_candidate import TaskCandidateBuilder
 from app.utils.encryption import Encryptor
 import logging
 
-# NEW: Imports for new page extraction feature
-from app.notion.smart_mapping.page_task_extraction_engine import PageTaskExtractionEngine
 
 class ServiceFactory:
     @staticmethod
@@ -152,7 +152,7 @@ class ServiceFactory:
 
             detector_aggregator = FieldDetectorAggregator(registry)
 
-            mapping_engine = MappingEngine(
+            mapping_engine = NotionDatabaseEngine(
                 caching_service,
                 SchemaParser(),
                 detector_aggregator,
@@ -168,7 +168,7 @@ class ServiceFactory:
 
         # NEW: Initialize page extraction engine (similar to mapping_engine)
         try:
-            page_extraction_engine = PageTaskExtractionEngine(
+            page_extraction_engine = NotionPageEngine(
                 caching_service,
                 features_service,
                 user_services['preferences_service']

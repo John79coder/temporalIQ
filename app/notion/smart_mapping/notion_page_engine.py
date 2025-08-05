@@ -29,7 +29,7 @@ from app.notion.smart_mapping.partial_candidate_stitcher import PageAggregator
 from app.user_preferences.preferences_store.service import PreferencesService
 
 
-class PageTaskExtractionEngine:
+class NotionPageEngine:
     def __init__(self, caching_service: ICacheService, features_service: FeaturesService, preferences_service: PreferencesService):
         self.caching_service = caching_service
         self.features_service = features_service

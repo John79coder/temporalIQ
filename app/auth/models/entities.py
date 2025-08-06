@@ -6,15 +6,16 @@ class TimestampMixin:
     created_at = db.Column(db.DateTime(timezone=True), default=TimeZone.utc_now)
     updated_at = db.Column(db.DateTime(timezone=True), default=TimeZone.utc_now, onupdate=TimeZone.utc_now)
 
-
 class User(db.Model, TimestampMixin):
     __tablename__ = "users"
-    id = db.Column(db.Integer, primary_key=True, index=True)
+    id = db.Column(db.Integer, primary_key=True)
     email = db.Column(db.String, unique=True, index=True, nullable=False)
     hashed_password = db.Column(db.String, nullable=False)
     is_verified = db.Column(db.Boolean, default=False)
-    failed_logins = db.Column(db.Integer, default=0)  # Added for lockout
-
+    failed_logins = db.Column(db.Integer, default=0)
+    two_factor_secret = db.Column(db.String, nullable=True)
+    two_factor_enabled = db.Column(db.Boolean, default=False)
+    backup_codes = db.Column(db.ARRAY(db.String), nullable=True)
     __table_args__ = (
         db.CheckConstraint(
             r"email ~ '^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$'",
@@ -32,10 +33,20 @@ class User(db.Model, TimestampMixin):
         user.failed_logins = data.get("failed_logins", 0)
         user.created_at = data.get("created_at")
         user.updated_at = data.get("updated_at")
+        user.two_factor_secret = data.get("two_factor_secret")
+        user.two_factor_enabled = data.get("two_factor_enabled", False)
+        user.backup_codes = data.get("backup_codes")
         return user
 
 class VerificationToken(db.Model):
     __tablename__ = "verification_tokens"
+    id = db.Column(db.Integer, primary_key=True)
+    user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
+    token = db.Column(db.String, nullable=False, unique=True)
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
+
+class PasswordResetToken(db.Model):
+    __tablename__ = "password_reset_tokens"
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     token = db.Column(db.String, nullable=False, unique=True)

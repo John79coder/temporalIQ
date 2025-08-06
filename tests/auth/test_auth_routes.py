@@ -137,7 +137,7 @@ def test_login_invalid_credentials(client, db_session, app, test_user):
     }, headers={"X-CSRF-Token": client.csrf_token})
 
     assert response.status_code == 401
-    assert "Invalid credentials" in response.json["detail"]
+    assert "Invalid email or password" in response.json["detail"]
 
 
 def test_login_unverified_user(client, db_session, app):
@@ -274,9 +274,9 @@ def test_apple_signin_missing_id_token(client, db_session, app):
         assert "Missing id_token" in response.json["detail"]
 
 
-def test_onboarding_success(client, app):
+def test_onboarding_success(authorized_client, app):
 
-    response = client.get("/auth/onboarding")
+    response = authorized_client.get("/auth/onboarding")
 
     assert response.status_code == 200
     assert "steps" in response.json

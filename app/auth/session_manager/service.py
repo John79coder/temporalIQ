@@ -1,25 +1,30 @@
 # app/auth/session_manager/service.py
 import logging
 import pickle
+import secrets
+from datetime import timedelta
+from io import BytesIO
 
-from passlib.context import CryptContext
+from flask import current_app
 from sqlalchemy.orm.session import Session
-
 from app.auth.session_manager.repository import UserRepository
 import jwt
+
+from app.utils.security import pwd_context
 from config import Config
 from app.utils.caching import ICacheService
 from app.utils.time_zone import TimeZone
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
 import requests
 from typing import Optional
-from app.utils.exceptions import AuthError, DatabaseError, wrap_external_error
+from app.utils.exceptions import AuthError, DatabaseError, wrap_external_error, ServiceUnavailableError
 from app.auth.models.entities import User
-
-
 from app.features.services.service import FeaturesService
-
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+import pyotp
+import qrcode
+import base64
+from flask_mail import Message
+import smtplib
 
 class AuthenticationService:
     def __init__(self, user_repo: UserRepository, caching_service: ICacheService, features_service: FeaturesService):
@@ -30,7 +35,6 @@ class AuthenticationService:
         self.failed_login_threshold = 5  # Configurable if needed
 
     def update_verified(self, db: Session, user_id: int) -> Optional[User]:
-
         try:
             user = self.user_repo.update_verified(db, user_id)
             if not user:
@@ -44,7 +48,6 @@ class AuthenticationService:
             raise
         except Exception as e:
             raise wrap_external_error(e, DatabaseError, "Failed to update user verification status")
-
 
     @staticmethod
     def hash_password(password: str) -> str:
@@ -100,11 +103,9 @@ class AuthenticationService:
                 self.log_anomaly("login_failed", {"email": email})
                 raise AuthError("Account locked due to too many failed attempts")
             if self.verify_password(password, user.hashed_password):
-                # Reset failed logins on success
                 self.user_repo.update_failed_logins(db, user.id, 0)
                 return user
             else:
-                # Increment failed logins on failure
                 new_count = user.failed_logins + 1
                 self.user_repo.update_failed_logins(db, user.id, new_count)
                 self.log_anomaly("login_failed", {"email": email})
@@ -154,8 +155,108 @@ class AuthenticationService:
             self.log_anomaly("apple_auth_failed", {"error": str(e)})
             raise wrap_external_error(e, AuthError, "Apple JWT verification failed")
 
-
     @staticmethod
     def log_anomaly(event_type: str, details: dict):
         extra = {"event_type": event_type, "details": details, "timestamp": TimeZone.utc_now().isoformat()}
         logging.error("ANOMALY", extra=extra)
+
+    def request_password_reset(self, db: Session, email: str):
+        user = self.user_repo.get_by_email(db, email)
+        if not user:
+            raise AuthError("User not found")
+        if not user.is_verified:
+            raise AuthError("Account not verified")
+
+        token = secrets.token_urlsafe(32)
+        expires = TimeZone.utc_now() + timedelta(hours=1)
+        self.user_repo.create_reset_token(db, user.id, token, expires)
+
+        reset_url = f"{current_app.config.get('FRONTEND_BASE_URL', 'http://localhost:3000')}/reset-password?token={token}"
+        self._send_email(email, "Password Reset Request", f"Click to reset your password: {reset_url}")
+
+    def reset_password(self, db: Session, token: str, new_password: str):
+        rt = self.user_repo.validate_reset_token(db, token)
+        if not rt:
+            raise AuthError("Invalid or expired reset token")
+
+        hashed = self.hash_password(new_password)
+        user = self.user_repo.update_password(db, rt.user_id, hashed)
+        if not user:
+            raise DatabaseError("User not found for password update")
+
+        self.user_repo.delete_reset_token(db, token)
+        self.user_repo.update_failed_logins(db, user.id, 0)
+        self.caching_service.delete(f"auth:user:email:{user.email}")
+
+        return user
+
+    def setup_2fa(self, db: Session, user_id: int):
+        user = self.user_repo.get_by_id(db, user_id)
+        if not user:
+            raise AuthError("User not found")
+
+        secret = pyotp.random_base32()
+        backup_codes = self.user_repo.generate_backup_codes()
+        self.user_repo.enable_2fa(db, user_id, secret, backup_codes)
+        db.commit()  # Explicit commit if not auto
+
+        qr_url = pyotp.TOTP(secret).provisioning_uri(name=user.email, issuer_name="YourSaaS")
+
+        qr = qrcode.QRCode()
+        qr.add_data(qr_url)
+        qr.make(fit=True)
+        img = qr.make_image(fill_color="black", back_color="white")
+
+        buffer = BytesIO()
+        img.save(buffer, format="PNG")
+
+        qr_base64 = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
+
+        return {"qr_base64": qr_base64, "secret": secret, "backup_codes": backup_codes}
+
+
+    def verify_2fa_code(self, db: Session, user_id: int, code: str):
+        user = self.user_repo.get_by_id(db, user_id)
+        if not user or not user.two_factor_enabled:
+            raise AuthError("2FA not enabled")
+        totp = pyotp.TOTP(user.two_factor_secret)
+        if totp.verify(code):
+            return True
+        for i, hashed_code in enumerate(user.backup_codes or []):
+            if pwd_context.verify(code, hashed_code):
+                user.backup_codes.pop(i)
+                user.updated_at = TimeZone.utc_now()
+                db.commit()
+                return True
+        return False
+
+    # NEW: General _send_email method (moved from EmailVerificationService for reuse)
+    def _send_email(self, to_email: str, subject: str, body: str):
+        msg = Message(
+            subject=subject,
+            recipients=[to_email],
+            body=body,
+            html=f"<p>{body}</p>",  # Simple HTML version
+            sender=current_app.config['MAIL_DEFAULT_SENDER']
+        )
+        try:
+            current_app.extensions['mail'].send(msg)
+            logging.info(f"Email sent to {to_email}: {subject}")
+        except smtplib.SMTPAuthenticationError as e:
+            logging.error(f"SMTP authentication failed for {to_email}: {str(e)}")
+            raise wrap_external_error(e, ServiceUnavailableError, "SMTP authentication failed")
+        except smtplib.SMTPRecipientsRefused as e:
+            logging.error(f"SMTP recipients refused for {to_email}: {str(e)}")
+            raise wrap_external_error(e, ServiceUnavailableError, "Invalid recipient email")
+        except smtplib.SMTPServerDisconnected as e:
+            logging.error(f"SMTP server disconnected for {to_email}: {str(e)}")
+            raise wrap_external_error(e, ServiceUnavailableError, "SMTP server connection lost")
+        except smtplib.SMTPDataError as e:
+            logging.error(f"SMTP data error for {to_email}: {str(e)}")
+            raise wrap_external_error(e, ServiceUnavailableError, "Failed to send email data")
+        except smtplib.SMTPException as e:
+            logging.error(f"General SMTP error for {to_email}: {str(e)}")
+            raise wrap_external_error(e, ServiceUnavailableError, "Failed to send email")
+        except Exception as e:
+            logging.error(f"Unexpected error sending email to {to_email}: {str(e)}")
+            raise wrap_external_error(e, ServiceUnavailableError, "Email sending failed")

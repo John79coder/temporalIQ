@@ -5,6 +5,10 @@ import json
 from  app.utils.encryption import Encryptor
 from app.utils.exceptions import ServiceUnavailableError, wrap_external_error
 
+from passlib.context import CryptContext
+
+pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 class SecurityService:
     def __init__(self):
         try:

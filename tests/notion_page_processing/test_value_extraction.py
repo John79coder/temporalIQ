@@ -136,7 +136,7 @@ def test_urgency_classifier_with_nlp(mock_pipeline, mock_features_service, mock_
     mock_pipeline.return_value = mock_model
 
     blocks = [{'type': 'paragraph', 'text': [{'plain_text': 'urgent task'}]}]
-    extractor = UrgencyClassifier(mock_features_service)
+    extractor = UrgencyClassifier(mock_features_service, MagicMock())
     partial = extractor.extract(blocks, mock_db, 1)
 
     assert partial.urgency > 0.75
@@ -145,7 +145,7 @@ def test_urgency_classifier_with_nlp(mock_pipeline, mock_features_service, mock_
 
 def test_urgency_classifier_without_nlp(mock_features_service, mock_db, mock_section_blocks):
     mock_features_service.get_settings.return_value.use_nlp_urgency = False
-    extractor = UrgencyClassifier(mock_features_service)
+    extractor = UrgencyClassifier(mock_features_service, MagicMock())
     partial = extractor.extract(mock_section_blocks, mock_db, 1)
     assert partial.confidence == 0.5
 
@@ -202,12 +202,12 @@ def test_description_extractor_without_spacy(mock_features_service, mock_db, moc
 
 @pytest.fixture
 def mock_engine(mock_features_service):
-    engine = NotionPageEngine(MagicMock(), mock_features_service, MagicMock(), MagicMock())
-    # Mock aggregator and sectionizer for isolation
+    engine = NotionPageEngine(MagicMock(), mock_features_service, MagicMock(), MagicMock(), MagicMock())
+
     engine.sectionizer = MagicMock()
     engine.sectionizer.segment.return_value = [BlockSection([{'type': 'heading_1', 'text': [{'plain_text': 'Title'}]}])]
     engine.aggregator = MagicMock()
-    # UPDATED: Added missing required fields to TaskCandidate mock
+
     engine.aggregator.aggregate.return_value = [
         TaskCandidateData(
             user_id=1,
@@ -234,8 +234,8 @@ def mock_engine(mock_features_service):
 @patch("app.notion.smart_mapping.page_value_extractors.priority_extractor.PriorityExtractor")
 def test_page_task_extraction_engine_generate_candidates(
         MockPriority, MockDuration, MockDueDate, MockDescription, MockTag,
-        MockCompletion, mock_pipeline, MockTitle,  # Reordered for clarity
-        mock_aggregate, mock_current_app,  # New: Use mock_aggregate
+        MockCompletion, mock_pipeline, MockTitle,
+        mock_aggregate, mock_current_app,
         mock_features_service, mock_db
 ):
     mock_app_context = MagicMock()
@@ -247,7 +247,7 @@ def test_page_task_extraction_engine_generate_candidates(
     mock_features_service.get_settings.return_value = mock_settings
 
     mock_section = BlockSection([{'type': 'heading_1', 'text': [{'plain_text': 'Test Title'}]}])
-    engine = NotionPageEngine(MagicMock(), mock_features_service, MagicMock(), MagicMock())
+    engine = NotionPageEngine(MagicMock(), mock_features_service, MagicMock(), MagicMock(), MagicMock())
     engine.sectionizer = MagicMock()
     engine.sectionizer.segment.return_value = [mock_section]
 
@@ -305,7 +305,7 @@ def test_page_task_extraction_engine_multi_task(MockFieldDetectorAggregator, moc
     ]
     MockFieldDetectorAggregator.return_value = mock_detector_instance
 
-    engine = NotionPageEngine(MagicMock(), mock_features_service, MagicMock(), MagicMock())
+    engine = NotionPageEngine(MagicMock(), mock_features_service, MagicMock(), MagicMock(), MagicMock())
     engine.sectionizer = MagicMock()
     engine.sectionizer.segment.return_value = [
         BlockSection([{'type': 'heading_1', 'text': [{'plain_text': 'Task A'}]}]),

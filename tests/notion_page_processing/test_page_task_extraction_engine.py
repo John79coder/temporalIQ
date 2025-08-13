@@ -15,7 +15,7 @@ def mock_features_service():
 
 @pytest.fixture
 def page_engine(mock_features_service):
-    engine = NotionPageEngine(MagicMock(), mock_features_service, MagicMock(), MagicMock())
+    engine = NotionPageEngine(MagicMock(), mock_features_service, MagicMock(), MagicMock(), MagicMock())
     engine.sectionizer = MagicMock()
     engine.aggregator = MagicMock()
     engine.registry = MagicMock()
@@ -32,7 +32,7 @@ def test_generate_candidates_from_page_blocks(mock_current_app, page_engine, moc
     expected_candidates = [
         TaskCandidateData(
             user_id=1,
-            notion_db_id=None,  # Updated: Align with page-based extraction (notion_db_id=None)
+            notion_db_id=None,
             page_id="p123",
             title="Quarterly Report",
             confidence=0.85,

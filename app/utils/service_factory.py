@@ -173,7 +173,8 @@ class ServiceFactory:
                 caching_service,
                 features_service,
                 user_services['preferences_service'],
-                detector_registry
+                detector_registry,
+                logging_service
             )
             logger.info("Page extraction engine initialized")
         except Exception as e:

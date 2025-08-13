@@ -24,19 +24,21 @@ from app.notion.smart_mapping.sectionizer import Sectionizer, BlockSection
 from app.notion.smart_mapping.sentence_task_splitter.task_splitter import SentenceSplitter
 from app.user_preferences.preferences_store.service import PreferencesService
 from app.utils.caching import ICacheService
+from app.utils.logging_service import LoggingService
 
 
 class NotionPageEngine:
     def __init__(self, caching_service: ICacheService, features_service: FeaturesService,
-                 preferences_service: PreferencesService, detector_registry: DetectorRegistry):
+                 preferences_service: PreferencesService, detector_registry: DetectorRegistry, logging_service: LoggingService):
         self.caching_service = caching_service
         self.features_service = features_service
         self.sectionizer = Sectionizer()
         self.aggregator = PageAggregator(preferences_service)
         self.sentence_splitter = SentenceSplitter()
         self.registry = detector_registry
+        self.logging_service = logging_service
         self._register_extractors()
-        self.extractor_aggregator = FieldDetectorAggregator(self.registry)
+        self.extractor_aggregator = FieldDetectorAggregator(self.registry),
 
     def _register_extractors(self):
         """Register all page value extractors."""
@@ -44,7 +46,7 @@ class NotionPageEngine:
         self.registry.register_detector(DueDateExtractor(self.features_service))
         self.registry.register_detector(PriorityExtractor(self.features_service))
         self.registry.register_detector(DurationExtractor(self.features_service))
-        self.registry.register_detector(UrgencyClassifier(self.features_service))
+        self.registry.register_detector(UrgencyClassifier(self.features_service, self.logging_service))
         self.registry.register_detector(CompletionExtractor(self.features_service))
         self.registry.register_detector(TagExtractor(self.features_service))
         self.registry.register_detector(DescriptionExtractor(self.features_service))

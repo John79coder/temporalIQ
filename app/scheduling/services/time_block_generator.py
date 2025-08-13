@@ -5,6 +5,7 @@ from datetime import datetime, timedelta
 from typing import List, Tuple, Optional
 
 from flask import g, current_app
+from huggingface_hub.errors import EntryNotFoundError
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 from transformers import pipeline
@@ -37,22 +38,6 @@ class TimeBlockGenerator(ITimeBlockGenerator):
         self.logging_service = logging_service
         self.task_candidate_repo = TaskCandidateRepository()
         self.nlp = None
-        try:
-
-            model_dir = current_app.config.get("MODEL_DIR", ".")
-            model_path = os.path.join(model_dir, "KS-Vijay_urgency-model-aura")
-            self.nlp = pipeline("text-classification", model=model_path, local_files_only=True)
-
-        except Exception as e:
-            import traceback
-
-            self.logging_service.error(
-                f"Failed to load urgency-model-aura\n{traceback.format_exc()}",
-                user_id=0,
-                extra={"error": str(e)}
-            )
-
-            self.nlp = None
 
     def _check_nlp_enabled(self, user_id: int) -> bool:
         """Check if NLP urgency detection is enabled for the user."""
@@ -174,7 +159,9 @@ class TimeBlockGenerator(ITimeBlockGenerator):
         return 0.8 if any(re.search(rf'\b{word}\b', title.lower()) for word in keywords) else 0.3
 
     def _analyze_task_urgency(self, title: str, user_id: int) -> float:
-        """Analyze task urgency using NLP model."""
+
+        self._load_nlp_model()
+
         if not self.nlp:
             self.logging_service.error("NLP model not available, falling back to heuristic", user_id=user_id)
             return self._heuristic_urgency(title)
@@ -249,3 +236,35 @@ class TimeBlockGenerator(ITimeBlockGenerator):
         except SQLAlchemyError as e:
             self.logging_service.error("Failed to log urgency event", user_id=user_id, task_id=task.id,
                                        extra={"error": str(e)})
+
+    def _load_nlp_model(self):
+        if self.nlp:
+            return
+
+        self.logging_service.info("TIME_BLOCK_GENERATOR: Loading NLP model...")
+
+        model_dir = current_app.config.get("MODEL_DIR", ".")
+        model_path = os.path.join(model_dir, "KS-Vijay_urgency-model-aura")
+        try:
+            self.nlp = pipeline("text-classification", model=model_path, local_files_only=True)
+        except OSError as e:
+            self.logging_service.error(f"Missing or unreadable local model files at {model_path}",
+                user_id=0,
+                extra={"error": str(e)}
+            )
+            self.nlp = None
+        except ValueError as e:
+            self.logging_service.error(f"ValueError loading model at {model_path} — likely missing files or offline-only mode",
+                user_id=0,
+                extra={"error": str(e)}
+            )
+            self.nlp = None
+        except EntryNotFoundError as e:
+            self.logging_service.error(f"EntryNotFoundError — model lookup failed for {model_path}",
+                user_id=0,
+                extra={"error": str(e)}
+            )
+            self.nlp = None
+        else:
+            self.logging_service.info(f"Loaded NLP model from {model_path}")
+            return

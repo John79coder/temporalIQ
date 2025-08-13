@@ -1,6 +1,7 @@
 # app/icloud/routes/api.py
 from flask import Blueprint, request, jsonify, g, current_app
 from pydantic import ValidationError as PydanticValidationError
+
 from app import limiter
 from app.extensions import limit
 from app.icloud.models.schemas import (
@@ -22,6 +23,7 @@ from app.utils.time_zone import TimeZone
 
 bp = Blueprint("icloud", __name__, url_prefix="/icloud")
 
+
 @bp.route("/connect", methods=["POST"])
 @verify_jwt
 @csrf_protected
@@ -41,6 +43,7 @@ def connect_icloud():
     except (DatabaseError, ServiceUnavailableError) as e:
         return make_handled_error_response(e, str(e), 500)
 
+
 @bp.route("/calendars", methods=["GET"])
 @verify_jwt
 @limiter.limit(limit("30 per minute"))
@@ -53,6 +56,7 @@ def list_calendars():
         return make_handled_error_response(CalendarError, str(e), 500)
     except (DatabaseError, ServiceUnavailableError) as e:
         return make_handled_error_response(e, str(e), 500)
+
 
 @bp.route("/events", methods=["GET"])
 @verify_jwt
@@ -77,6 +81,7 @@ def get_events():
     except (DatabaseError, ServiceUnavailableError, DataValidationError) as e:
         return make_handled_error_response(e, str(e), 500)
 
+
 @bp.route("/events", methods=["POST"])
 @verify_jwt
 @csrf_protected
@@ -95,6 +100,7 @@ def create_event():
     except (DatabaseError, ServiceUnavailableError) as e:
         return make_handled_error_response(e, str(e), 500)
 
+
 @bp.route("/update", methods=["POST"])
 @verify_jwt
 @csrf_protected
@@ -111,6 +117,7 @@ def update_icloud_connection():
         return make_handled_error_response(CalendarError, str(e), 500)
     except (DatabaseError, ServiceUnavailableError) as e:
         return make_handled_error_response(e, str(e), 500)
+
 
 @bp.route("/available", methods=["GET"])
 @verify_jwt
@@ -147,6 +154,7 @@ def get_available_time_blocks():
         return make_handled_error_response(CalendarError, str(e), 400 if "No iCloud connection" in str(e) else 500)
     except (DatabaseError, ServiceUnavailableError) as e:
         return make_handled_error_response(e, str(e), 500)
+
 
 @bp.route("/schedule", methods=["POST"])
 @verify_jwt

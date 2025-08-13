@@ -1,29 +1,22 @@
 # tests/migration/test_migration.py
+import logging
+import os
+import traceback
 from unittest.mock import patch
-from app import create_app
-from config import TestingConfig
-
-from tests.conftest import app
 
 import pytest
-
-from sqlalchemy.exc import IntegrityError
-from app.scheduling.models.entities import Task
-from app.auth.models.entities import User
-
-
-import os
-import logging
-import traceback
 from flask import current_app
+from sqlalchemy.exc import IntegrityError
+
+from app import create_app
+from app.auth.models.entities import User
 from app.extensions import db
+from app.scheduling.models.entities import Task
+from config import TestingConfig
+from tests.conftest import app
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO)
-
-
-
-
 
 # Set up logging
 logger = logging.getLogger(__name__)
@@ -41,6 +34,7 @@ log_file_path = os.path.join(os.path.dirname(__file__), "migration_test.log")
 file_handler = logging.FileHandler(log_file_path)
 file_handler.setFormatter(log_formatter)
 logger.addHandler(file_handler)
+
 
 def _test_alembic_migrations_apply_cleanly(app):
     root_dir = os.path.dirname(os.path.abspath(__file__))
@@ -114,6 +108,7 @@ def test_database_schema_matches_models(app):
         db_tables = set(db.metadata.tables.keys())
         assert model_tables == db_tables
 
+
 def test_foreign_key_integrity_task_user(db_session):
     task = Task(notion_db_id="db1", title="Test")
     db_session.add(task)
@@ -121,6 +116,7 @@ def test_foreign_key_integrity_task_user(db_session):
         db_session.commit()
 
     db_session.rollback()
+
 
 def test_unique_user_email_constraint(db_session):
     user1 = User(email="dup@example.com", hashed_password="hash")
@@ -133,7 +129,10 @@ def test_unique_user_email_constraint(db_session):
 
     db_session.rollback()
 
+
 import subprocess
+
+
 @patch("subprocess.run")
 def test_database_migration_application(mock_run):
     app = create_app(TestingConfig)

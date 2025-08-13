@@ -1,9 +1,12 @@
 import pytest
+
 from app.notion.smart_mapping.sectionizer import Sectionizer, BlockSection
+
 
 @pytest.fixture
 def sectionizer():
     return Sectionizer()
+
 
 def test_segment_with_heading_splits(sectionizer):
     blocks = [

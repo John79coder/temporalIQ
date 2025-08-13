@@ -1,11 +1,12 @@
 # tests/user/test_repositories.py
 import pytest
-from app.user_preferences.preferences_store.repository import PreferencesRepository
+
 from app.user_preferences.models.entities import UserPreferences
+from app.user_preferences.preferences_store.repository import PreferencesRepository
 from app.utils.exceptions import DatabaseError
 
-def test_preferences_repository__create_or_update(db_session, test_user):
 
+def test_preferences_repository__create_or_update(db_session, test_user):
     user, _ = test_user
 
     user_preferences_repository = PreferencesRepository()
@@ -28,7 +29,6 @@ def test_preferences_repository__create_or_update(db_session, test_user):
 
 
 def test_preferences_repository_invalid_update(db_session, test_user):
-
     user, _ = test_user
 
     user_preferences_repository = PreferencesRepository()

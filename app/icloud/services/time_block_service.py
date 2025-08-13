@@ -1,11 +1,13 @@
 # app/icloud/services/time_block_service.py
-from typing import List
 from datetime import datetime, timedelta
+from typing import List
+
 from sqlalchemy.orm import Session
+
 from app.icloud.models.schemas import TimeBlock
-from app.utils.exceptions import DataValidationError
-from app.utils.caching import ICacheService
 from app.icloud.services.interfaces import ITimeBlockService, ICalDAVClientManager
+from app.utils.caching import ICacheService
+from app.utils.exceptions import DataValidationError
 
 
 class TimeBlockService(ITimeBlockService):
@@ -14,14 +16,14 @@ class TimeBlockService(ITimeBlockService):
         self.client_manager = client_manager
 
     def get_available_time_blocks(
-        self,
-        user_id: int,
-        db: Session,
-        calendar_id: str,
-        start_date: datetime,
-        end_date: datetime,
-        earliest_time: str,
-        latest_time: str
+            self,
+            user_id: int,
+            db: Session,
+            calendar_id: str,
+            start_date: datetime,
+            end_date: datetime,
+            earliest_time: str,
+            latest_time: str
     ) -> List[TimeBlock]:
 
         cache_key = f"icloud:time_blocks:{user_id}:{calendar_id}:{start_date.isoformat()}:{end_date.isoformat()}"
@@ -47,8 +49,8 @@ class TimeBlockService(ITimeBlockService):
             while current_time < day_end:
                 block_end = current_time + timedelta(minutes=30)  # Default block size
                 if not any(
-                    event.start <= block_end and event.end > current_time
-                    for event in events
+                        event.start <= block_end and event.end > current_time
+                        for event in events
                 ):
                     blocks.append(TimeBlock(start=current_time, end=block_end))
                 current_time += timedelta(minutes=30)

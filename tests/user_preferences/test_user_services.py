@@ -1,9 +1,10 @@
 # tests/user/test_services.py
-from app.user_preferences.preferences_store.service import PreferencesService
-from app.user_preferences.preferences_store.repository import PreferencesRepository
+from app.auth.models.entities import User
 from app.user_preferences.models.entities import UserPreferences
 from app.user_preferences.models.schemas import PreferencesCreate
-from app.auth.models.entities import User
+from app.user_preferences.preferences_store.repository import PreferencesRepository
+from app.user_preferences.preferences_store.service import PreferencesService
+
 
 def test_preferences_service_save_preferences(caching_service, db_session, app):
     with app.app_context():

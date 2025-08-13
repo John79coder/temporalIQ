@@ -1,26 +1,30 @@
 # app/notion/smart_mapping/engine.py
+from typing import List
+
+from sqlalchemy.orm import Session
+
+from app.features.services.service import FeaturesService
+from app.notion.smart_mapping.candidate_generator import CandidateGenerator
+from app.notion.smart_mapping.field_detector_aggregator import FieldDetectorAggregator
 from app.notion.smart_mapping.models import FieldMatch, TaskCandidateData
 from app.notion.smart_mapping.schema_parser import SchemaParser
-from app.notion.smart_mapping.field_detector_aggregator import FieldDetectorAggregator
-from app.notion.smart_mapping.candidate_generator import CandidateGenerator
 from app.notion.smart_mapping.scoring.ml_model import MLModelScorer
-from sqlalchemy.orm import Session
-from app.utils.exceptions import DatabaseError, DataValidationError, wrap_external_error
 from app.utils.caching import ICacheService
-from typing import List
-from app.features.services.service import FeaturesService
+from app.utils.exceptions import DatabaseError, DataValidationError, wrap_external_error
 
 
 class NotionDatabaseEngine:
     def __init__(self, caching_service: ICacheService, schema_parser: SchemaParser,
-                 detector_aggregator: FieldDetectorAggregator, candidate_generator: CandidateGenerator, features_service: FeaturesService):
+                 detector_aggregator: FieldDetectorAggregator, candidate_generator: CandidateGenerator,
+                 features_service: FeaturesService):
         self.caching_service = caching_service
         self.schema_parser = schema_parser
         self.detector_aggregator = detector_aggregator
         self.candidate_generator = candidate_generator
         self.scorer = MLModelScorer(features_service)
 
-    def generate_candidates(self, data: dict, db: Session = None, user_id: int = None, database_id: str = None) -> List[TaskCandidateData]:
+    def generate_candidates(self, data: dict, db: Session = None, user_id: int = None, database_id: str = None) -> List[
+        TaskCandidateData]:
         if not user_id or not db:
             raise DataValidationError("User ID and database session are required")
         try:

@@ -1,5 +1,6 @@
-import os
 import logging
+import os
+
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
@@ -13,11 +14,13 @@ DB_PASS = "postgres"
 DB_HOST = "localhost"
 DB_PORT = 5432
 
+
 def extract_db_name_and_base_url(full_url: str):
     parts = full_url.rsplit("/", 1)
     db_name = parts[-1]
     base_url = f"postgresql://{DB_USER}:{DB_PASS}@{DB_HOST}:{DB_PORT}/postgres"
     return db_name, base_url
+
 
 def recreate_database():
     db_name, base_url = extract_db_name_and_base_url(TEST_DB_URL)
@@ -48,6 +51,7 @@ def recreate_database():
     except Exception as e:
         logger.error("❌ Failed to create test database", exc_info=e)
         raise
+
 
 if __name__ == "__main__":
     recreate_database()

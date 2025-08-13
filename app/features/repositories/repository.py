@@ -1,12 +1,15 @@
 # app/features/repositories/repository.py
 from typing import Optional, List
-from sqlalchemy.orm import Session
+
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
+
 from app.features.models.entities import UserAISettings, AITrainingEvent
-from app.utils.exceptions import DatabaseError, wrap_external_error
 from app.repositories.base import AbstractRepository
-from app.utils.time_zone import TimeZone
+from app.utils.exceptions import DatabaseError, wrap_external_error
 from app.utils.logging_service import LoggingService
+from app.utils.time_zone import TimeZone
+
 
 class FeaturesRepository(AbstractRepository):
     def __init__(self, logging_service: LoggingService):
@@ -22,7 +25,8 @@ class FeaturesRepository(AbstractRepository):
             return settings
         except SQLAlchemyError as e:
             db.rollback()
-            self.logging_service.error("Failed to create AI settings", user_id=settings.user_id, extra={"error": str(e)})
+            self.logging_service.error("Failed to create AI settings", user_id=settings.user_id,
+                                       extra={"error": str(e)})
             raise wrap_external_error(e, DatabaseError, "Failed to create AI settings") from e
 
     def update(self, db: Session, settings: UserAISettings) -> UserAISettings:
@@ -49,7 +53,8 @@ class FeaturesRepository(AbstractRepository):
             return existing
         except SQLAlchemyError as e:
             db.rollback()
-            self.logging_service.error("Failed to update AI settings", user_id=settings.user_id, extra={"error": str(e)})
+            self.logging_service.error("Failed to update AI settings", user_id=settings.user_id,
+                                       extra={"error": str(e)})
             raise wrap_external_error(e, DatabaseError, "Failed to update AI settings") from e
 
     def create_or_update(self, db: Session, settings: UserAISettings) -> UserAISettings:
@@ -65,6 +70,7 @@ class FeaturesRepository(AbstractRepository):
             self.logging_service.error("Failed to retrieve AI settings", user_id=user_id, extra={"error": str(e)})
             raise wrap_external_error(e, DatabaseError, "Failed to retrieve AI settings") from e
 
+
 class AIDataRepository(AbstractRepository):
     def __init__(self, logging_service: LoggingService):
         self.logging_service = logging_service
@@ -76,7 +82,8 @@ class AIDataRepository(AbstractRepository):
                 db.add(event)
         except SQLAlchemyError as e:
             db.rollback()
-            self.logging_service.error("Failed to log AI training event", user_id=event.user_id, task_id=event.task_id, extra={"error": str(e), "event_type": event.event_type})
+            self.logging_service.error("Failed to log AI training event", user_id=event.user_id, task_id=event.task_id,
+                                       extra={"error": str(e), "event_type": event.event_type})
             raise wrap_external_error(e, DatabaseError, "Failed to log AI training event") from e
 
     def get_events_by_type(self, db: Session, event_type: str, user_id: Optional[int] = None) -> List[AITrainingEvent]:
@@ -87,5 +94,7 @@ class AIDataRepository(AbstractRepository):
                 query = query.filter_by(user_id=user_id)
             return query.all()
         except SQLAlchemyError as e:
-            self.logging_service.error(f"Failed to retrieve AI training events for type {event_type}", user_id=user_id, extra={"error": str(e)})
-            raise wrap_external_error(e, DatabaseError, f"Failed to retrieve AI training events for type {event_type}") from e
+            self.logging_service.error(f"Failed to retrieve AI training events for type {event_type}", user_id=user_id,
+                                       extra={"error": str(e)})
+            raise wrap_external_error(e, DatabaseError,
+                                      f"Failed to retrieve AI training events for type {event_type}") from e

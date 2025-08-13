@@ -1,7 +1,9 @@
 # user/settings_validator/service.py
-from app.user_preferences.models.schemas import PreferencesCreate
-import zoneinfo
 import logging
+import zoneinfo
+
+from app.user_preferences.models.schemas import PreferencesCreate
+
 
 class PreferencesValidator:
     def validate(self, prefs: PreferencesCreate) -> list[str]:

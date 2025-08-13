@@ -1,6 +1,7 @@
 # tests/utils/custom_client.py
 from flask.testing import FlaskClient
 
+
 class CSRFClient(FlaskClient):
     @property
     def csrf_token(self):

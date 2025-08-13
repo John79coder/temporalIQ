@@ -1,16 +1,17 @@
 # tests/notion/test_notion_routes.py
+from datetime import datetime, timezone
 from unittest.mock import patch, MagicMock
+
 from flask import g
 from pydantic import HttpUrl
-from app.notion.models.entities import NotionConnection, FieldMapping
+
 from app.auth.models.entities import User
-from datetime import datetime, timezone
+from app.notion.models.entities import NotionConnection, FieldMapping
 from app.utils.exceptions import DatabaseError
 from app.utils.exceptions import NotionError
 
 
 def test_manual_auth_error_triggers_handler(client):
-
     response = client.get("/__test_auth_error")
 
     assert response.status_code == 401
@@ -20,7 +21,6 @@ def test_manual_auth_error_triggers_handler(client):
 
 @patch("app.notion.auth.service.requests.sessions.Session.post")
 def test_connect_notion_success(mock_post, authorized_client, db_session, app, test_user, encryptor):
-
     _, user_id = test_user
 
     mock_post.return_value.json.return_value = {
@@ -47,8 +47,6 @@ def test_connect_notion_success(mock_post, authorized_client, db_session, app, t
 
         notion_connection = db_session.query(NotionConnection).filter_by(user_id=user_id).first()
 
-
-
         assert notion_connection is not None
         assert encryptor.decrypt(notion_connection.access_token) == "test-access-token"
         assert encryptor.decrypt(notion_connection.refresh_token) == "test-refresh-token"
@@ -58,7 +56,6 @@ def test_connect_notion_success(mock_post, authorized_client, db_session, app, t
 
 @patch("app.notion.auth.service.requests.sessions.Session.post")
 def test_connect_notion_no_data(mock_post, authorized_client, db_session, app, test_user):
-
     _, user_id = test_user
 
     mock_post.return_value.json.return_value = {}
@@ -81,7 +78,6 @@ def test_connect_notion_no_data(mock_post, authorized_client, db_session, app, t
 @patch("app.notion.repositories.repository.NotionAuthRepository.save_connection")
 @patch("app.notion.auth.service.requests.sessions.Session.post")
 def test_connect_notion_database_failure(mock_save, mock_post, authorized_client, db_session, app, test_user):
-
     _, user_id = test_user
 
     mock_post.return_value.json.return_value = {
@@ -110,7 +106,6 @@ def test_connect_notion_database_failure(mock_save, mock_post, authorized_client
 
 
 def test_map_schema_success(authorized_client, db_session, app, test_user):
-
     _, user_id = test_user
 
     with app.app_context():
@@ -135,7 +130,6 @@ def test_map_schema_success(authorized_client, db_session, app, test_user):
 
 
 def test_map_schema_invalid_input(authorized_client, db_session, app, test_user):
-
     _, user_id = test_user
 
     with app.app_context():
@@ -155,7 +149,6 @@ def test_map_schema_invalid_input(authorized_client, db_session, app, test_user)
 
 
 def test_map_schema_unauthorized(authorized_client, db_session, app, test_user):
-
     _, user_id = test_user
 
     with app.app_context():
@@ -178,7 +171,8 @@ def test_map_schema_unauthorized(authorized_client, db_session, app, test_user):
 @patch("app.notion.client.notion_client.NotionClient.fetch_rows")
 @patch("app.notion.repositories.repository.NotionAuthRepository.get_connection")
 @patch("app.user_preferences.preferences_store.service.PreferencesService.get_preferences")
-def test_generate_candidates_success(mock_get_preferences, mock_get_connection, mock_rows, mock_schema, authorized_client, db_session, app, test_user):
+def test_generate_candidates_success(mock_get_preferences, mock_get_connection, mock_rows, mock_schema,
+                                     authorized_client, db_session, app, test_user):
     _, user_id = test_user
 
     # Mock UserPreferences to return PDT timezone
@@ -232,7 +226,8 @@ def test_generate_candidates_success(mock_get_preferences, mock_get_connection, 
         assert retrieved_mapping is not None
         assert retrieved_mapping.title_field == "Title"
 
-        response = authorized_client.post("/notion/generate-candidates", json={"database_id": "db1"}, headers={"X-CSRF-Token": authorized_client.csrf_token})
+        response = authorized_client.post("/notion/generate-candidates", json={"database_id": "db1"},
+                                          headers={"X-CSRF-Token": authorized_client.csrf_token})
 
         assert response.status_code == 200
         assert len(response.json) == 1
@@ -242,9 +237,9 @@ def test_generate_candidates_success(mock_get_preferences, mock_get_connection, 
         assert response.json[0]["confidence"] > 0.5
         assert not response.json[0]["issues"]
 
+
 @patch("app.notion.repositories.repository.NotionAuthRepository.get_connection")
 def test_generate_candidates_no_connection(mock_get_connection, authorized_client, db_session, app, test_user):
-
     _, user_id = test_user
     mock_get_connection.return_value = None
 
@@ -252,7 +247,8 @@ def test_generate_candidates_no_connection(mock_get_connection, authorized_clien
         g.db = db_session
         g.current_user = db_session.get(User, user_id)
 
-        response = authorized_client.post("/notion/generate-candidates", json={"database_id": "db1"}, headers={"X-CSRF-Token": authorized_client.csrf_token})
+        response = authorized_client.post("/notion/generate-candidates", json={"database_id": "db1"},
+                                          headers={"X-CSRF-Token": authorized_client.csrf_token})
 
         assert response.status_code == 404
         assert "No Notion connection" in response.json["detail"]
@@ -260,8 +256,8 @@ def test_generate_candidates_no_connection(mock_get_connection, authorized_clien
 
 @patch("app.notion.client.notion_client.NotionClient.fetch_schema")
 @patch("app.notion.repositories.repository.NotionAuthRepository.get_connection")
-def test_generate_candidates_database_failure(mock_get_connection, mock_schema, authorized_client, db_session, app, test_user):
-
+def test_generate_candidates_database_failure(mock_get_connection, mock_schema, authorized_client, db_session, app,
+                                              test_user):
     _, user_id = test_user
 
     mock_schema.side_effect = NotionError("Notion API error")
@@ -282,7 +278,8 @@ def test_generate_candidates_database_failure(mock_get_connection, mock_schema, 
         db_session.add(mock_connection)
         db_session.commit()
 
-        response = authorized_client.post("/notion/generate-candidates", json={"database_id": "db1"}, headers={"X-CSRF-Token": authorized_client.csrf_token})
+        response = authorized_client.post("/notion/generate-candidates", json={"database_id": "db1"},
+                                          headers={"X-CSRF-Token": authorized_client.csrf_token})
 
         assert response.status_code == 400
         assert "Failed to fetch Notion" in response.json["detail"]
@@ -291,7 +288,6 @@ def test_generate_candidates_database_failure(mock_get_connection, mock_schema, 
 @patch("app.notion.client.notion_client.NotionClient.list_databases")
 @patch("app.notion.repositories.repository.NotionAuthRepository.get_connection")
 def test_list_databases_success(mock_get_connection, mock_list, authorized_client, db_session, app, test_user):
-
     _, user_id = test_user
 
     mock_list.return_value = [{"id": "db1", "title": [{"plain_text": "Test Database"}]}]
@@ -321,7 +317,6 @@ def test_list_databases_success(mock_get_connection, mock_list, authorized_clien
 
 @patch("app.notion.repositories.repository.NotionAuthRepository.get_connection")
 def test_list_databases_no_connection(mock_get_connection, authorized_client, db_session, app, test_user):
-
     _, user_id = test_user
 
     mock_get_connection.return_value = None
@@ -338,8 +333,8 @@ def test_list_databases_no_connection(mock_get_connection, authorized_client, db
 
 @patch("app.notion.auth.service.requests.sessions.Session.post")
 @patch("app.notion.repositories.repository.NotionAuthRepository.get_connection")
-def test_refresh_token_success(mock_get_connection, mock_post, authorized_client, db_session, app, test_user, encryptor):
-
+def test_refresh_token_success(mock_get_connection, mock_post, authorized_client, db_session, app, test_user,
+                               encryptor):
     _, user_id = test_user
 
     mock_post.return_value.json.return_value = {
@@ -368,7 +363,8 @@ def test_refresh_token_success(mock_get_connection, mock_post, authorized_client
         g.db = db_session
         g.current_user = db_session.get(User, user_id)
 
-        response = authorized_client.post("/notion/refresh-token", headers={"X-CSRF-Token": authorized_client.csrf_token})
+        response = authorized_client.post("/notion/refresh-token",
+                                          headers={"X-CSRF-Token": authorized_client.csrf_token})
 
         assert response.status_code == 200
         assert encryptor.decrypt(response.json["access_token"]) == "new-token"
@@ -380,7 +376,6 @@ def test_refresh_token_success(mock_get_connection, mock_post, authorized_client
 
 @patch("app.notion.repositories.repository.NotionAuthRepository.get_connection")
 def test_refresh_token_no_refresh_token(mock_get_connection, authorized_client, db_session, app, test_user):
-
     _, user_id = test_user
 
     mock_connection = NotionConnection(
@@ -399,7 +394,8 @@ def test_refresh_token_no_refresh_token(mock_get_connection, authorized_client, 
         db_session.add(mock_connection)
         db_session.commit()
 
-        response = authorized_client.post("/notion/refresh-token", headers={"X-CSRF-Token": authorized_client.csrf_token})
+        response = authorized_client.post("/notion/refresh-token",
+                                          headers={"X-CSRF-Token": authorized_client.csrf_token})
 
         assert response.status_code == 400
         assert "Token refresh failed" in response.json["detail"]
@@ -408,7 +404,6 @@ def test_refresh_token_no_refresh_token(mock_get_connection, authorized_client, 
 @patch("app.notion.client.notion_client.NotionClient.fetch_schema")
 @patch("app.notion.auth.service.NotionAuthService.get_connection")
 def test_preview_mapping_success(mock_get_connection, mock_schema, authorized_client, db_session, app, test_user):
-
     _, user_id = test_user
 
     mock_schema.return_value = {
@@ -433,7 +428,8 @@ def test_preview_mapping_success(mock_get_connection, mock_schema, authorized_cl
         db_session.add(mock_connection)
         db_session.commit()
 
-        response = authorized_client.post("/notion/preview-mapping", json={"database_id": "db1"}, headers={"X-CSRF-Token": authorized_client.csrf_token})
+        response = authorized_client.post("/notion/preview-mapping", json={"database_id": "db1"},
+                                          headers={"X-CSRF-Token": authorized_client.csrf_token})
 
         assert response.status_code == 200
         assert len(response.json) > 0

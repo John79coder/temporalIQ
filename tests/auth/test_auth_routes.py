@@ -1,12 +1,13 @@
 # tests/auth/test_routes.py
 import uuid
-from unittest.mock import patch, Mock
-from flask import g
-from app.auth.models.entities import User, VerificationToken
 from datetime import datetime, timedelta, timezone
-from passlib.context import CryptContext
-import jwt
+from unittest.mock import patch, Mock
 
+import jwt
+from flask import g
+from passlib.context import CryptContext
+
+from app.auth.models.entities import User, VerificationToken
 from tests.conftest import DEFAULT_TEST_PASSWORD
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
@@ -14,9 +15,7 @@ pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 @patch("app.auth.email_verification.service.mail.send")
 def test_signup_success(mock_send, client, db_session, app):
-
     with app.app_context():
-
         g.db = db_session
 
         email = f"test_signup_{uuid.uuid4().hex}@example.com"
@@ -39,7 +38,6 @@ def test_signup_success(mock_send, client, db_session, app):
 
 
 def test_signup_duplicate_email(client, db_session, app, test_user):
-
     user, _ = test_user
 
     response = client.post("/auth/signup", json={
@@ -64,14 +62,12 @@ def test_signup_invalid_input(authorized_client, db_session, app):
         print("Status code:", response.status_code)
         print("Response data:", response.data.decode())
 
-
         assert response.status_code == 400
         assert "email address" in response.json["detail"]
     assert "Password must be at least 8 characters" in response.json["detail"]
 
 
 def test_signup_missing_csrf(client, db_session, app):
-
     app.config["WTF_CSRF_ENABLED"] = False
 
     try:
@@ -92,20 +88,17 @@ def test_signup_missing_csrf(client, db_session, app):
 
 @patch("app.auth.email_verification.service.mail.send")
 def test_signup_database_failure(mock_send, client, db_session, app):
+    with patch("app.auth.session_manager.repository.UserRepository.create", side_effect=Exception("DB error")):
+        response = client.post("/auth/signup", json={
+            "email": f"test_db_fail_{uuid.uuid4().hex}@example.com",
+            "password": DEFAULT_TEST_PASSWORD
+        }, headers={"X-CSRF-Token": client.csrf_token})
 
-   with patch("app.auth.session_manager.repository.UserRepository.create", side_effect=Exception("DB error")):
-
-       response = client.post("/auth/signup", json={
-           "email": f"test_db_fail_{uuid.uuid4().hex}@example.com",
-           "password": DEFAULT_TEST_PASSWORD
-       }, headers={"X-CSRF-Token": client.csrf_token})
-
-       assert response.status_code == 500
-       assert "DB error" in response.json["detail"]
+        assert response.status_code == 500
+        assert "DB error" in response.json["detail"]
 
 
 def test_login_success(client, db_session, app, test_user, authentication_service):
-
     user, _ = test_user
 
     authentication_service.update_verified(db_session, user.id)
@@ -128,12 +121,11 @@ def test_login_success(client, db_session, app, test_user, authentication_servic
 
 
 def test_login_invalid_credentials(client, db_session, app, test_user):
-
     user, _ = test_user
 
     response = client.post("/auth/login", json={
-       "email": user.email,
-       "password": "WrongP123!"
+        "email": user.email,
+        "password": "WrongP123!"
     }, headers={"X-CSRF-Token": client.csrf_token})
 
     assert response.status_code == 401
@@ -141,7 +133,6 @@ def test_login_invalid_credentials(client, db_session, app, test_user):
 
 
 def test_login_unverified_user(client, db_session, app):
-
     email = f"{uuid.uuid4().hex}@example.com"
 
     user = User(email=email, hashed_password=pwd_context.hash(DEFAULT_TEST_PASSWORD), is_verified=False)
@@ -150,8 +141,8 @@ def test_login_unverified_user(client, db_session, app):
     db_session.commit()
 
     response = client.post("/auth/login", json={
-       "email": user.email,
-       "password": DEFAULT_TEST_PASSWORD
+        "email": user.email,
+        "password": DEFAULT_TEST_PASSWORD
     }, headers={"X-CSRF-Token": client.csrf_token})
 
     assert response.status_code == 403
@@ -159,9 +150,7 @@ def test_login_unverified_user(client, db_session, app):
 
 
 def test_login_missing_fields(client, db_session, app):
-
     with app.app_context():
-
         g.db = db_session
 
         response = client.post("/auth/login", json={
@@ -175,15 +164,13 @@ def test_login_missing_fields(client, db_session, app):
 
 
 def test_login_database_failure(client, db_session, app):
-
     with app.app_context():
-
         g.db = db_session
 
         email = f"test_db_fail_{uuid.uuid4().hex}@example.com"
 
-        with patch("app.auth.session_manager.repository.UserRepository.get_by_email", side_effect=Exception("DB error")):
-
+        with patch("app.auth.session_manager.repository.UserRepository.get_by_email",
+                   side_effect=Exception("DB error")):
             response = client.post("/auth/login", json={
                 "email": email,
                 "password": "Secure123!"
@@ -194,16 +181,15 @@ def test_login_database_failure(client, db_session, app):
 
 
 def test_verify_email_success(client, db_session, app, test_user):
-
     user, _ = test_user
 
     with app.app_context():
-
         g.db = db_session
 
         token = "test-token"
 
-        verification_token = VerificationToken(user_id=user.id, token=token, expires_at=datetime.now(timezone.utc) + timedelta(minutes=15))
+        verification_token = VerificationToken(user_id=user.id, token=token,
+                                               expires_at=datetime.now(timezone.utc) + timedelta(minutes=15))
 
         db_session.add(verification_token)
         db_session.commit()
@@ -216,9 +202,7 @@ def test_verify_email_success(client, db_session, app, test_user):
 
 
 def test_verify_invalid_token(client, db_session, app):
-
     with app.app_context():
-
         response = client.post("/auth/verify", json={"token": "invalid"}, headers={"X-CSRF-Token": client.csrf_token})
 
         assert response.status_code == 400
@@ -226,7 +210,6 @@ def test_verify_invalid_token(client, db_session, app):
 
 
 def test_verify_missing_csrf(client, db_session, app):
-
     app.config["WTF_CSRF_ENABLED"] = False
 
     try:
@@ -253,10 +236,12 @@ def test_apple_signin_success(mock_get, client, db_session, app, test_user):
 
     with app.app_context():
         g.db = db_session
-        mock_get.return_value = Mock(json=Mock(return_value={"keys": [{"kid": "test-kid", "kty": "RSA"}]}))  # Mock response
+        mock_get.return_value = Mock(
+            json=Mock(return_value={"keys": [{"kid": "test-kid", "kty": "RSA"}]}))  # Mock response
 
         with patch("app.auth.session_manager.service.AuthenticationService.authenticate_apple_user", return_value=user):
-            response = client.post("/auth/apple-signin", json={"id_token": "fake-token"}, headers={"X-CSRF-Token": client.csrf_token})
+            response = client.post("/auth/apple-signin", json={"id_token": "fake-token"},
+                                   headers={"X-CSRF-Token": client.csrf_token})
 
             assert response.status_code == 200
             assert response.json["user"]["email"] == user.email
@@ -264,9 +249,7 @@ def test_apple_signin_success(mock_get, client, db_session, app, test_user):
 
 
 def test_apple_signin_missing_id_token(client, db_session, app):
-
     with app.app_context():
-
         g.db = db_session
         response = client.post("/auth/apple-signin", json={}, headers={"X-CSRF-Token": client.csrf_token})
 
@@ -275,7 +258,6 @@ def test_apple_signin_missing_id_token(client, db_session, app):
 
 
 def test_onboarding_success(authorized_client, app):
-
     response = authorized_client.get("/auth/onboarding")
 
     assert response.status_code == 200
@@ -285,7 +267,6 @@ def test_onboarding_success(authorized_client, app):
 
 
 def test_test_session_success(client, app):
-
     response = client.post("/auth/test-session", json={})
 
     assert response.status_code == 200

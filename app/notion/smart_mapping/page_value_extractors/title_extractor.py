@@ -1,13 +1,14 @@
 import os
-
-from flask import current_app
-
-from app.notion.smart_mapping.page_value_extractors.base import PageValueExtractor
-from app.features.services.service import FeaturesService
-from sqlalchemy.orm import Session
 from typing import List, Dict
-from app.notion.models.schemas import PartialCandidate
+
 import spacy
+from flask import current_app
+from sqlalchemy.orm import Session
+
+from app.features.services.service import FeaturesService
+from app.notion.models.schemas import PartialCandidate
+from app.notion.smart_mapping.page_value_extractors.base import PageValueExtractor
+
 
 class TitleExtractor(PageValueExtractor):
     def __init__(self, features_service: FeaturesService):
@@ -19,7 +20,6 @@ class TitleExtractor(PageValueExtractor):
 
         if self.features_service.get_settings(db, user_id).use_spacy_heuristics:
             if self.nlp is None:
-
                 model_dir = current_app.config.get("MODEL_DIR", ".")
                 model_path = os.path.join(model_dir, "en_core_web_sm")
                 self.nlp = spacy.load(model_path)

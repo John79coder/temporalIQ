@@ -1,11 +1,14 @@
 # app/features/services/ai_data_services.py
 from typing import List, Optional
-from sqlalchemy.orm import Session
+
 from sqlalchemy.exc import SQLAlchemyError
-from app.features.repositories.repository import AIDataRepository
+from sqlalchemy.orm import Session
+
 from app.features.models.entities import AITrainingEvent
+from app.features.repositories.repository import AIDataRepository
 from app.utils.exceptions import DatabaseError, wrap_external_error
 from app.utils.logging_service import LoggingService
+
 
 class AIDataService:
     def __init__(self, repository: AIDataRepository, logging_service: LoggingService):
@@ -35,4 +38,5 @@ class AIDataService:
                 user_id=user_id,
                 extra={"error": str(e)}
             )
-            raise wrap_external_error(e, DatabaseError, f"Failed to retrieve AI training events for type {event_type}") from e
+            raise wrap_external_error(e, DatabaseError,
+                                      f"Failed to retrieve AI training events for type {event_type}") from e

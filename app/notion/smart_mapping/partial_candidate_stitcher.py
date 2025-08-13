@@ -42,11 +42,10 @@ class PageAggregator:
 
         return stitched
 
-
     def is_mergeable(self, prev: PartialCandidate, curr: PartialCandidate) -> bool:
         return (
-            self.no_conflicting_fields(prev, curr) and
-            self.is_adjacent(prev, curr)
+                self.no_conflicting_fields(prev, curr) and
+                self.is_adjacent(prev, curr)
         )
 
     def is_adjacent(self, a: PartialCandidate, b: PartialCandidate) -> bool:
@@ -68,7 +67,6 @@ class PageAggregator:
 
         return False  # not adjacent by any known metric
 
-
     def no_conflicting_fields(self, a: PartialCandidate, b: PartialCandidate) -> bool:
         """Ensure no overlapping fields with different values."""
         for field in ['title', 'due_date', 'duration', 'priority', 'status', 'tags']:
@@ -77,8 +75,8 @@ class PageAggregator:
                 return False
         return True
 
-
-    def merge_group(self, partial_candidates: List[PartialCandidate], user_id: int, page_id: str, db: Session) -> TaskCandidateData:
+    def merge_group(self, partial_candidates: List[PartialCandidate], user_id: int, page_id: str,
+                    db: Session) -> TaskCandidateData:
 
         task_candidate = TaskCandidateData(
             user_id=user_id,

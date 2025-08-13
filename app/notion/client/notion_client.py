@@ -1,8 +1,9 @@
 # notion/client/notion_client.py
+import logging
 from typing import List, Dict, Optional
+
 import requests
 from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
-import logging
 
 from app.utils.encryption import Encryptor
 

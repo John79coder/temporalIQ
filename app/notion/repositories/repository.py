@@ -1,11 +1,14 @@
 # app/notion/repositories/repository.py
 from typing import List
-from sqlalchemy.orm import Session
+
 from sqlalchemy.exc import IntegrityError
+from sqlalchemy.orm import Session
+
 from app.notion.models.entities import NotionConnection, FieldMapping, TaskCandidate
-from app.utils.exceptions import DatabaseError, wrap_external_error
 from app.repositories.base import AbstractRepository
+from app.utils.exceptions import DatabaseError, wrap_external_error
 from app.utils.time_zone import TimeZone
+
 
 class NotionAuthRepository(AbstractRepository):
     @staticmethod
@@ -28,11 +31,13 @@ class NotionAuthRepository(AbstractRepository):
         except Exception as e:
             raise wrap_external_error(e, DatabaseError, "Failed to retrieve Notion connection")
 
+
 class MappingRepository(AbstractRepository):
     @staticmethod
     def save_mapping(db: Session, mapping: FieldMapping) -> FieldMapping:
         try:
-            existing = db.query(FieldMapping).filter_by(user_id=mapping.user_id, notion_db_id=mapping.notion_db_id).first()
+            existing = db.query(FieldMapping).filter_by(user_id=mapping.user_id,
+                                                        notion_db_id=mapping.notion_db_id).first()
             if existing:
                 existing.title_field = mapping.title_field
                 existing.due_date_field = mapping.due_date_field
@@ -58,6 +63,7 @@ class MappingRepository(AbstractRepository):
             return db.query(FieldMapping).filter_by(user_id=user_id, notion_db_id=notion_db_id).first()
         except Exception as e:
             raise wrap_external_error(e, DatabaseError, "Failed to retrieve mapping")
+
 
 class TaskCandidateRepository(AbstractRepository):
     @staticmethod

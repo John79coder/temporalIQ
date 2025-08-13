@@ -1,12 +1,14 @@
 # app/subscriptions/routes/api.py
+import stripe
 from flask import Blueprint, request, jsonify, g, current_app
 from pydantic import ValidationError as PydanticValidationError
+
+from app.subscriptions.models.schemas import SubscriptionCreate, SubscriptionOut, SubscriptionUpdate
 from app.utils.endpoint_utils import verify_jwt, csrf_protected
 from app.utils.exceptions import DataValidationError, DatabaseError, make_handled_error_response, AuthError
-from app.subscriptions.models.schemas import SubscriptionCreate, SubscriptionOut, SubscriptionUpdate
-import stripe
 
 bp = Blueprint("subscriptions", __name__, url_prefix="/subscriptions")
+
 
 @bp.route("/subscribe", methods=["POST"])
 @verify_jwt

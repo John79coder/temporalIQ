@@ -1,9 +1,8 @@
 # app/utils/logging_service.py
-from typing import Any, Dict, Optional
-from app.utils.time_zone import TimeZone
 import logging
-import os
+from typing import Any, Dict, Optional
 
+from app.utils.time_zone import TimeZone
 from config import Config
 
 
@@ -13,6 +12,7 @@ class _SafeExtraFilter(logging.Filter):
         record.task_id = getattr(record, 'task_id', '-')
         record.timestamp = getattr(record, 'timestamp', '-')
         return True
+
 
 class LoggingService:
     def __init__(self):
@@ -30,7 +30,8 @@ class LoggingService:
             self.logger.addHandler(logging.StreamHandler())
         self.logger.debug("LoggingService initialized")
 
-    def error(self, message: str, user_id: Optional[int] = None, task_id: Optional[int] = None, extra: Optional[Dict[str, Any]] = None):
+    def error(self, message: str, user_id: Optional[int] = None, task_id: Optional[int] = None,
+              extra: Optional[Dict[str, Any]] = None):
         extra = extra or {}
         if user_id is not None:
             extra['user_id'] = user_id
@@ -42,7 +43,8 @@ class LoggingService:
             if isinstance(handler, logging.FileHandler):
                 handler.flush()
 
-    def info(self, message: str, user_id: Optional[int] = None, task_id: Optional[int] = None, extra: Optional[Dict[str, Any]] = None):
+    def info(self, message: str, user_id: Optional[int] = None, task_id: Optional[int] = None,
+             extra: Optional[Dict[str, Any]] = None):
         extra = extra or {}
         if user_id is not None:
             extra['user_id'] = user_id

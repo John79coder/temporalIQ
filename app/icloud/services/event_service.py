@@ -1,14 +1,17 @@
 # app/icloud/services/event_service.py
 import logging
-from typing import List
 from datetime import datetime
+from typing import List
+
 from sqlalchemy.orm import Session
-from app.icloud.models.schemas import CalendarEvent, CalendarMetadata, EventWriteRequest
+
 from app.icloud.models.entities import CalendarSelection
-from app.utils.exceptions import CalendarError, DatabaseError, wrap_external_error
-from app.utils.caching import ICacheService
+from app.icloud.models.schemas import CalendarEvent, CalendarMetadata, EventWriteRequest
 from app.icloud.repositories.repository import ICloudRepository
 from app.icloud.services.interfaces import ICalDAVEventService, ICalDAVClientManager
+from app.utils.caching import ICacheService
+from app.utils.exceptions import CalendarError, DatabaseError, wrap_external_error
+
 
 class CalDAVEventService(ICalDAVEventService):
     def __init__(self, caching_service: ICacheService, repo: ICloudRepository, client_manager: 'ICalDAVClientManager'):
@@ -34,7 +37,8 @@ class CalDAVEventService(ICalDAVEventService):
 
         return calendars
 
-    def fetch_user_events(self, user_id: int, db: Session, calendar_id: str, start: datetime, end: datetime) -> List[CalendarEvent]:
+    def fetch_user_events(self, user_id: int, db: Session, calendar_id: str, start: datetime, end: datetime) -> List[
+        CalendarEvent]:
         cache_key = f"icloud:events:{user_id}:{calendar_id}:{start.isoformat()}:{end.isoformat()}"
         cached_events = self.caching_service.get(cache_key)
         if cached_events:
@@ -59,7 +63,8 @@ class CalDAVEventService(ICalDAVEventService):
         self.caching_service.delete(f"icloud:time_blocks:{user_id}:{calendar_id}:*")
         return uid
 
-    def write_scheduled_blocks(self, user_id: int, db: Session, calendar_id: str, events: List[EventWriteRequest]) -> None:
+    def write_scheduled_blocks(self, user_id: int, db: Session, calendar_id: str,
+                               events: List[EventWriteRequest]) -> None:
         written_uids = []
         try:
             for event in events:

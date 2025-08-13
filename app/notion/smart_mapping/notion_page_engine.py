@@ -1,34 +1,34 @@
-from app.notion.smart_mapping.sectionizer import Sectionizer, BlockSection
-from app.notion.smart_mapping.page_value_extractors.title_extractor import TitleExtractor
-from app.notion.smart_mapping.page_value_extractors.urgency_classifier import UrgencyClassifier
-from app.notion.smart_mapping.page_value_extractors.completion_extractor import CompletionExtractor
-from app.notion.smart_mapping.page_value_extractors.tag_extractor import TagExtractor
-from app.notion.smart_mapping.page_value_extractors.description_extractor import DescriptionExtractor
+import logging
+import re
+from typing import Dict
+from typing import List
+
+from flask import current_app
+from sqlalchemy.orm import Session
+
+from app.features.services.service import FeaturesService
+from app.notion.models.schemas import PartialCandidate
 from app.notion.smart_mapping.detector_registry import DetectorRegistry
 from app.notion.smart_mapping.field_detector_aggregator import FieldDetectorAggregator
-from app.notion.smart_mapping.sentence_task_splitter.task_splitter import SentenceSplitter
-from app.utils.caching import ICacheService
-from app.features.services.service import FeaturesService
-from sqlalchemy.orm import Session
-from typing import Dict
 from app.notion.smart_mapping.models import TaskCandidateData
-import logging
-from flask import current_app
-
-from app.notion.models.schemas import PartialCandidate
+from app.notion.smart_mapping.page_value_extractors.completion_extractor import CompletionExtractor
+from app.notion.smart_mapping.page_value_extractors.description_extractor import DescriptionExtractor
 from app.notion.smart_mapping.page_value_extractors.due_date_extractor import DueDateExtractor
 from app.notion.smart_mapping.page_value_extractors.duration_extractor import DurationExtractor
 from app.notion.smart_mapping.page_value_extractors.priority_extractor import PriorityExtractor
-
-
-import re
-from typing import List
+from app.notion.smart_mapping.page_value_extractors.tag_extractor import TagExtractor
+from app.notion.smart_mapping.page_value_extractors.title_extractor import TitleExtractor
+from app.notion.smart_mapping.page_value_extractors.urgency_classifier import UrgencyClassifier
 from app.notion.smart_mapping.partial_candidate_stitcher import PageAggregator
+from app.notion.smart_mapping.sectionizer import Sectionizer, BlockSection
+from app.notion.smart_mapping.sentence_task_splitter.task_splitter import SentenceSplitter
 from app.user_preferences.preferences_store.service import PreferencesService
+from app.utils.caching import ICacheService
 
 
 class NotionPageEngine:
-    def __init__(self, caching_service: ICacheService, features_service: FeaturesService, preferences_service: PreferencesService, detector_registry: DetectorRegistry):
+    def __init__(self, caching_service: ICacheService, features_service: FeaturesService,
+                 preferences_service: PreferencesService, detector_registry: DetectorRegistry):
         self.caching_service = caching_service
         self.features_service = features_service
         self.sectionizer = Sectionizer()
@@ -37,7 +37,6 @@ class NotionPageEngine:
         self.registry = detector_registry
         self._register_extractors()
         self.extractor_aggregator = FieldDetectorAggregator(self.registry)
-
 
     def _register_extractors(self):
         """Register all page value extractors."""
@@ -50,8 +49,8 @@ class NotionPageEngine:
         self.registry.register_detector(TagExtractor(self.features_service))
         self.registry.register_detector(DescriptionExtractor(self.features_service))
 
-
-    def generate_candidates(self, blocks: List[Dict], db: Session, user_id: int, page_id: str, force_single_task: bool) -> List[
+    def generate_candidates(self, blocks: List[Dict], db: Session, user_id: int, page_id: str,
+                            force_single_task: bool) -> List[
         TaskCandidateData]:
         settings = self.features_service.get_settings(db, user_id)
         if not settings.use_ai_page_extraction:

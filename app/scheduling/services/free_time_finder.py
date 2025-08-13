@@ -1,32 +1,32 @@
 # services/free_time_finder.py
-from typing import List, Optional
-from datetime import datetime, timedelta, timezone
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError
-from app.utils.caching import ICacheService
-from app.utils.exceptions import CalendarError, DataValidationError, wrap_external_error, DatabaseError
-from app.icloud.models.schemas import TimeBlock
-from app.icloud.services.interfaces import ICalDAVEventService
-from app.scheduling.services.interfaces import IFreeTimeFinder
-from app.scheduling.services.time_block_generator import TimeBlockGenerator
-from app.scheduling.models.policies import SchedulingPolicy
-from app.features.services.service import FeaturesService
-from app.features.services.ai_data_service import AIDataService
-from app.features.models.entities import AITrainingEvent
-from app.user_preferences.preferences_store.service import PreferencesService
-from app.utils.logging_service import LoggingService
-from app.features.models.schemas import DurationLogInput, DurationLogLabel
-
-import re
-import numpy as np
-import joblib
 import os
+import re
+from datetime import datetime, timedelta, timezone
+from typing import List, Optional
+
+import joblib
+import numpy as np
 from flask import current_app
-from tenacity import retry, stop_after_attempt, wait_exponential
 from sklearn.linear_model import Ridge
 from sklearn.model_selection import cross_val_score
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
+from tenacity import retry, stop_after_attempt, wait_exponential
 
+from app.features.models.entities import AITrainingEvent
+from app.features.models.schemas import DurationLogInput, DurationLogLabel
+from app.features.services.ai_data_service import AIDataService
+from app.features.services.service import FeaturesService
+from app.icloud.models.schemas import TimeBlock
+from app.icloud.services.interfaces import ICalDAVEventService
 from app.scheduling.models.entities import Task
+from app.scheduling.models.policies import SchedulingPolicy
+from app.scheduling.services.interfaces import IFreeTimeFinder
+from app.scheduling.services.time_block_generator import TimeBlockGenerator
+from app.user_preferences.preferences_store.service import PreferencesService
+from app.utils.caching import ICacheService
+from app.utils.exceptions import CalendarError, DataValidationError, wrap_external_error, DatabaseError
+from app.utils.logging_service import LoggingService
 from config import Config
 
 
@@ -87,7 +87,8 @@ class FreeTimeFinder(IFreeTimeFinder):
 
             events = self.ai_data_service.get_events_by_type(db, 'duration_log', user_id if scope == 'user' else None)
             if len(events) < 100:
-                self.logging_service.info("Insufficient data for Ridge training, using fallback", user_id=user_id, extra={"event_count": len(events)})
+                self.logging_service.info("Insufficient data for Ridge training, using fallback", user_id=user_id,
+                                          extra={"event_count": len(events)})
                 return False
 
             features, labels = [], []
@@ -115,7 +116,8 @@ class FreeTimeFinder(IFreeTimeFinder):
                 except Exception as e:
                     self.logging_service.error("Failed to save Ridge model", user_id=user_id, extra={"error": str(e)})
                     return False
-            self.logging_service.info("Ridge model cross-validation accuracy too low, using fallback", user_id=user_id, extra={"cv_mean": mean_cv_acc})
+            self.logging_service.info("Ridge model cross-validation accuracy too low, using fallback", user_id=user_id,
+                                      extra={"cv_mean": mean_cv_acc})
             return False
         except SQLAlchemyError as e:
             self.logging_service.error("Database error during model training", user_id=user_id, extra={"error": str(e)})
@@ -137,7 +139,8 @@ class FreeTimeFinder(IFreeTimeFinder):
                     day_length_hours=self._get_work_hours(db, user_id),
                     urgency=urgency
                 ).model_dump(),
-                label_json=DurationLogLabel(duration_minutes=(block_end - current_time).total_seconds() / 60).model_dump(),
+                label_json=DurationLogLabel(
+                    duration_minutes=(block_end - current_time).total_seconds() / 60).model_dump(),
                 source='model'
             )
             self.ai_data_service.log_event(db, event)
@@ -227,8 +230,10 @@ class FreeTimeFinder(IFreeTimeFinder):
             slots = []
             current_date = start_date
             while current_date <= end_date:
-                day_start = current_date.replace(hour=earliest_hour, minute=earliest_minute, second=0, microsecond=0, tzinfo=timezone.utc)
-                day_end = current_date.replace(hour=latest_hour, minute=latest_minute, second=0, microsecond=0, tzinfo=timezone.utc)
+                day_start = current_date.replace(hour=earliest_hour, minute=earliest_minute, second=0, microsecond=0,
+                                                 tzinfo=timezone.utc)
+                day_end = current_date.replace(hour=latest_hour, minute=latest_minute, second=0, microsecond=0,
+                                               tzinfo=timezone.utc)
                 current_time = day_start
                 while current_time < day_end:
                     block_end = self._compute_block_end(current_time, day_start, day_end, events, len(events), use_ml,
@@ -247,12 +252,13 @@ class FreeTimeFinder(IFreeTimeFinder):
             raise wrap_external_error(e, DataValidationError, "Invalid time format") from e
 
     def _compute_block_end(self, current_time: datetime, day_start: datetime, day_end: datetime, events: List,
-                           num_events: int, use_ml: bool, user_id: int, db : Session, task: Optional[Task]) -> datetime:
+                           num_events: int, use_ml: bool, user_id: int, db: Session, task: Optional[Task]) -> datetime:
         """Compute the end time for a time block."""
         from app.scheduling.models.policies import get_urgency_float  # NEW: Import utility
         try:
             if use_ml:
-                urgency = get_urgency_float(self.time_block_generator.get_urgency_score(task.title, user_id) if task else 0.0)  # CHANGED: Ensure float
+                urgency = get_urgency_float(self.time_block_generator.get_urgency_score(task.title,
+                                                                                        user_id) if task else 0.0)  # CHANGED: Ensure float
                 state = np.array([[num_events, (day_end - day_start).total_seconds() / 3600, urgency]])
                 predicted_duration = self.ridge_model.predict(state)[0]
                 return current_time + timedelta(minutes=SchedulingPolicy.clamp_duration(predicted_duration))
@@ -261,7 +267,8 @@ class FreeTimeFinder(IFreeTimeFinder):
                     prefs = self.preferences_service.get_preferences(db, user_id)
                     block_size = prefs.block_size_minutes or Config.DEFAULT_BLOCK_MINUTES
                 except Exception as e:
-                    self.logging_service.error("Failed to get prefs in fallback, using Config default", user_id=user_id, extra={"error": str(e)})
+                    self.logging_service.error("Failed to get prefs in fallback, using Config default", user_id=user_id,
+                                               extra={"error": str(e)})
                     block_size = Config.DEFAULT_BLOCK_MINUTES
                 return current_time + timedelta(minutes=block_size)
         except ValueError as e:

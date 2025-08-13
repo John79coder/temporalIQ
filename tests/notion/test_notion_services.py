@@ -1,28 +1,24 @@
 # tests/notion/test_notion_services.py
-from requests.exceptions import Timeout
-from app.utils.exceptions import NotionError
 from datetime import timezone, datetime
-import pytest
 from unittest.mock import patch
+
+import pytest
 from flask import g
+from pydantic import HttpUrl
+from requests.exceptions import Timeout
+
 from app.notion.auth.service import NotionAuthService
-from app.notion.mapping_storage.service import MappingService
 from app.notion.mapping_storage.repository import MappingRepository
-from app.notion.smart_mapping.notion_database_engine import NotionDatabaseEngine
-from app.notion.smart_mapping.schema_parser import SchemaParser
-from app.notion.smart_mapping.field_detector_aggregator import FieldDetectorAggregator
+from app.notion.mapping_storage.service import MappingService
 from app.notion.models.entities import NotionConnection, FieldMapping
 from app.notion.models.schemas import NotionTokenIn, FieldMappingIn
-from app.utils.exceptions import DataValidationError
 from app.notion.repositories.repository import NotionAuthRepository
-from app.notion.smart_mapping.detector_registry import DetectorRegistry
-
-from pydantic import HttpUrl
+from app.utils.exceptions import DataValidationError
+from app.utils.exceptions import NotionError
 
 
 @patch("app.notion.auth.service.requests.sessions.Session.post")
 def test_notion_auth_service__store_token(mock_post, db_session, app, caching_service, test_user, encryptor):
-
     user, _ = test_user
 
     mock_post.return_value.json.return_value = {
@@ -35,7 +31,6 @@ def test_notion_auth_service__store_token(mock_post, db_session, app, caching_se
     mock_post.return_value.raise_for_status = lambda: None
 
     with app.app_context():
-
         service = NotionAuthService(NotionAuthRepository(), caching_service, encryptor)
 
         notion_token_in = NotionTokenIn(
@@ -56,11 +51,9 @@ def test_notion_auth_service__store_token(mock_post, db_session, app, caching_se
 
 
 def test_mapping_service__store_mapping(db_session, app, test_user):
-
     user, _ = test_user
 
     with app.app_context():
-
         mapping_service = MappingService(MappingRepository())
 
         field_mapping_in = FieldMappingIn(
@@ -81,15 +74,15 @@ def test_mapping_service__store_mapping(db_session, app, test_user):
 
 @patch("app.notion.client.notion_client.NotionClient.fetch_schema")
 @patch("app.notion.client.notion_client.NotionClient.fetch_rows")
-def test_mapping_engine__generate_candidates(mock_rows, mock_schema, db_session, app, caching_service, user_preference_service, test_user, mapping_engine):
-
+def test_mapping_engine__generate_candidates(mock_rows, mock_schema, db_session, app, caching_service,
+                                             user_preference_service, test_user, mapping_engine):
     user, _ = test_user
 
     with app.app_context():
-
         g.db = db_session
 
-        db_session.add(NotionConnection(user_id=user.id, access_token="test-token", refresh_token="refresh", expires_at=datetime.now(timezone.utc), workspace_id="ws1"))
+        db_session.add(NotionConnection(user_id=user.id, access_token="test-token", refresh_token="refresh",
+                                        expires_at=datetime.now(timezone.utc), workspace_id="ws1"))
 
         db_session.add(FieldMapping(
             user_id=user.id,
@@ -123,13 +116,13 @@ def test_mapping_engine__generate_candidates(mock_rows, mock_schema, db_session,
 
 
 @patch("app.notion.client.notion_client.NotionClient.fetch_schema")
-def test_mapping_engine__invalid_schema(mock_schema, db_session, app, caching_service, user_preference_service, test_user, mapping_engine):
-
+def test_mapping_engine__invalid_schema(mock_schema, db_session, app, caching_service, user_preference_service,
+                                        test_user, mapping_engine):
     user, _ = test_user
 
     with app.app_context():
-
-        db_session.add(NotionConnection(user_id=user.id, access_token="test-token", refresh_token="refresh", expires_at=datetime.now(timezone.utc), workspace_id="ws1"))
+        db_session.add(NotionConnection(user_id=user.id, access_token="test-token", refresh_token="refresh",
+                                        expires_at=datetime.now(timezone.utc), workspace_id="ws1"))
 
         db_session.add(FieldMapping(
             user_id=user.id,

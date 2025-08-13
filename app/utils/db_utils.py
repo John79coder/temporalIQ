@@ -1,6 +1,7 @@
+from urllib.parse import urlparse
+
 from flask import Flask
 from sqlalchemy.orm import Session
-from urllib.parse import urlparse
 
 
 def get_database_name(obj: Session | Flask) -> str:

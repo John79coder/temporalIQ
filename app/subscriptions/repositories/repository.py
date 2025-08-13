@@ -1,10 +1,13 @@
 # app/subscriptions/repositories/repository.py
 from typing import Optional
+
 from sqlalchemy.orm import Session
+
+from app.repositories.base import AbstractRepository
 from app.subscriptions.models.entities import UserSubscriptions
 from app.utils.exceptions import DatabaseError, wrap_external_error
-from app.repositories.base import AbstractRepository
 from app.utils.time_zone import TimeZone
+
 
 class SubscriptionsRepository(AbstractRepository):
     def create_or_update(self, db: Session, subscription: UserSubscriptions) -> UserSubscriptions:

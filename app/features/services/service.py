@@ -1,18 +1,19 @@
 # app/features/services/service.py
-from sqlalchemy.orm import Session
 from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 
-from app.features.repositories.repository import FeaturesRepository
 from app.features.models.entities import UserAISettings
-from app.utils.exceptions import DatabaseError, wrap_external_error
-from app.utils.caching import ICacheService
-from app.subscriptions.services.service import SubscriptionsService
 from app.features.models.schemas import AISettingsUpdate
+from app.features.repositories.repository import FeaturesRepository
+from app.subscriptions.services.service import SubscriptionsService
+from app.utils.caching import ICacheService
+from app.utils.exceptions import DatabaseError, wrap_external_error
 from app.utils.logging_service import LoggingService
 
 
 class FeaturesService:
-    def __init__(self, repo: FeaturesRepository, caching_service: ICacheService, subscriptions_service: SubscriptionsService, logging_service: LoggingService):
+    def __init__(self, repo: FeaturesRepository, caching_service: ICacheService,
+                 subscriptions_service: SubscriptionsService, logging_service: LoggingService):
         self.repo = repo
         self.caching_service = caching_service
         self.subscriptions_service = subscriptions_service
@@ -51,7 +52,8 @@ class FeaturesService:
             self._cache_settings(user_id, saved)
             return saved
         except SQLAlchemyError as e:
-            self.logging_service.error("Failed to update AI settings", user_id=user_id, extra={"error": str(e), "update_data": update_data.model_dump()})
+            self.logging_service.error("Failed to update AI settings", user_id=user_id,
+                                       extra={"error": str(e), "update_data": update_data.model_dump()})
             raise wrap_external_error(e, DatabaseError, "Failed to update AI settings") from e
 
     def _update_fields(self, settings: UserAISettings, update_data: AISettingsUpdate):

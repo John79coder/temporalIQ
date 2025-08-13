@@ -1,13 +1,16 @@
 # app/notion/smart_mapping/page_value_extractors/priority_extractor.py
 import os
-from flask import current_app
-from app.notion.smart_mapping.page_value_extractors.base import PageValueExtractor
-from app.features.services.service import FeaturesService
-from sqlalchemy.orm import Session
 from typing import List, Dict
-from app.notion.models.schemas import PartialCandidate
+
+from flask import current_app
 from sentence_transformers import SentenceTransformer, util
 from sentence_transformers.models import Transformer, Pooling
+from sqlalchemy.orm import Session
+
+from app.features.services.service import FeaturesService
+from app.notion.models.schemas import PartialCandidate
+from app.notion.smart_mapping.page_value_extractors.base import PageValueExtractor
+
 
 class PriorityExtractor(PageValueExtractor):
     def __init__(self, features_service: FeaturesService):

@@ -1,11 +1,13 @@
 # app/notion/smart_mapping/scoring/ml_model.py
 import os
-from flask import current_app
-from app.notion.smart_mapping.scoring.base import Scorer
-from app.notion.smart_mapping.models import FieldMatch
+
 import spacy
+from flask import current_app
 from sqlalchemy.orm import Session
+
 from app.features.services.service import FeaturesService
+from app.notion.smart_mapping.models import FieldMatch
+from app.notion.smart_mapping.scoring.base import Scorer
 
 
 class MLModelScorer(Scorer):

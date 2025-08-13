@@ -1,13 +1,15 @@
 # app/user_preferences/preferences_store/repository.py
 from typing import Optional
+
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.expression import and_
 
+from app.repositories.base import AbstractRepository
 from app.user_preferences.models.entities import UserPreferences
 from app.utils.exceptions import DatabaseError, wrap_external_error
-from app.repositories.base import AbstractRepository
 from app.utils.time_zone import TimeZone
+
 
 class PreferencesRepository(AbstractRepository):
     def create_or_update(self, db: Session, preferences: UserPreferences) -> UserPreferences:

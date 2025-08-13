@@ -1,11 +1,11 @@
 # tests/user/test_models.py
 import pytest
 from sqlalchemy.exc import IntegrityError
+
 from app.user_preferences.models.entities import UserPreferences
 
 
 def test_user_preferences__defaults(db_session, test_user):
-
     user, _ = test_user
 
     user_preferences = UserPreferences(user_id=user.id)
@@ -19,7 +19,6 @@ def test_user_preferences__defaults(db_session, test_user):
 
 
 def test_user_preferences_invalid_work_hours(db_session, test_user):
-
     user, _ = test_user
 
     user_preferences = UserPreferences(

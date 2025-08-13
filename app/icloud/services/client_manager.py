@@ -1,18 +1,21 @@
 # app/icloud/services/client_manager.py
+import logging
+
 from sqlalchemy.orm import Session
 from sqlalchemy.sql.expression import and_
+
+from app.auth.models.entities import User
 from app.icloud.client.caldav_client import CalDAVClient
 from app.icloud.client.caldav_client_decorator import CalDAVClientDecorator
+from app.icloud.client.interfaces import ICalendarClient
 from app.icloud.models.entities import iCloudConnection
-from app.utils.encryption import Encryptor
-from app.utils.exceptions import CalendarError, DatabaseError, ServiceUnavailableError, wrap_external_error
-from app.utils.caching import ICacheService
 from app.icloud.repositories.repository import ICloudRepository
 from app.icloud.services.interfaces import ICalDAVClientManager
-from app.icloud.client.interfaces import ICalendarClient
-from app.auth.models.entities import User
+from app.utils.caching import ICacheService
+from app.utils.encryption import Encryptor
+from app.utils.exceptions import CalendarError, DatabaseError, ServiceUnavailableError, wrap_external_error
 from app.utils.time_zone import TimeZone
-import logging
+
 
 class CalDAVClientManager(ICalDAVClientManager):
     def __init__(self, caching_service: ICacheService, repo: ICloudRepository):

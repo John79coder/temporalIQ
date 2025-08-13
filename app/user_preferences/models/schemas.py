@@ -1,8 +1,11 @@
 from datetime import datetime
 from typing import Optional
+
 from pydantic import BaseModel, model_serializer, Field, ConfigDict
-from config import Config
+
 from app.utils.time_zone import TimeZone
+from config import Config
+
 
 class BaseOutModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -15,6 +18,7 @@ class BaseOutModel(BaseModel):
                 data[key] = TimeZone.serialize_datetime(value)
         return data
 
+
 class PreferencesCreate(BaseModel):
     user_id: int
     default_notion_db: str | None = None
@@ -23,6 +27,7 @@ class PreferencesCreate(BaseModel):
     max_blocks_per_day: int = Config.DEFAULT_MAX_BLOCKS_PER_DAY
     work_hours: float = Config.DEFAULT_WORK_HOURS_PER_DAY
     time_zone: Optional[str] = Field(None, description="User's time zone (e.g., America/New_York)")
+
 
 class PreferencesOut(BaseOutModel):
     id: int

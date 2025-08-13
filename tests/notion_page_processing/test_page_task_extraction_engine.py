@@ -1,16 +1,17 @@
-import pytest
 from unittest.mock import MagicMock, patch
 
-from app.features.models.entities import UserAISettings
-from app.features.services.service import FeaturesService
-from app.notion.smart_mapping.notion_page_engine import NotionPageEngine, BlockSection
+import pytest
+
 from app.notion.smart_mapping.models import TaskCandidateData
+from app.notion.smart_mapping.notion_page_engine import NotionPageEngine, BlockSection
+
 
 @pytest.fixture
 def mock_features_service():
     mock = MagicMock()
     mock.get_settings.return_value = MagicMock(use_ai_page_extraction=True)
     return mock
+
 
 @pytest.fixture
 def page_engine(mock_features_service):
@@ -19,6 +20,7 @@ def page_engine(mock_features_service):
     engine.aggregator = MagicMock()
     engine.registry = MagicMock()
     return engine
+
 
 @patch("app.notion.smart_mapping.notion_page_engine.current_app")
 def test_generate_candidates_from_page_blocks(mock_current_app, page_engine, mock_features_service, db_session):

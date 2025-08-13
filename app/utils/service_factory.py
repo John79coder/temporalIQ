@@ -1,41 +1,42 @@
 # app/utils/service_factory.py
+import logging
+
 from flask_caching import Cache
 
-from app.notion.smart_mapping.notion_database_engine import NotionDatabaseEngine
-from app.notion.smart_mapping.notion_page_engine import NotionPageEngine
-from app.utils.security import SecurityService
-from app.auth.session_manager.service import AuthenticationService
-from app.auth.session_manager.repository import UserRepository
-from app.auth.email_verification.service import EmailVerificationService
 from app.auth.email_verification.repository import TokenRepository
+from app.auth.email_verification.service import EmailVerificationService
+from app.auth.session_manager.repository import UserRepository
+from app.auth.session_manager.service import AuthenticationService
+from app.features.repositories.repository import FeaturesRepository, AIDataRepository
+from app.features.services.ai_data_service import AIDataService
+from app.features.services.service import FeaturesService
+from app.icloud.repositories.repository import ICloudRepository
 from app.icloud.services.client_manager import CalDAVClientManager
 from app.icloud.services.event_service import CalDAVEventService
 from app.icloud.services.time_block_service import TimeBlockService
-from app.icloud.repositories.repository import ICloudRepository
 from app.notion.auth.service import NotionAuthService
-from app.notion.repositories.repository import NotionAuthRepository
-from app.notion.mapping_storage.service import MappingService
-from app.notion.mapping_storage.repository import MappingRepository
 from app.notion.mapping_storage.feedback import FeedbackService, FeedbackRepository
-from app.user_preferences.preferences_store.service import PreferencesService
-from app.user_preferences.preferences_store.repository import PreferencesRepository
+from app.notion.mapping_storage.repository import MappingRepository
+from app.notion.mapping_storage.service import MappingService
+from app.notion.repositories.repository import NotionAuthRepository
+from app.notion.smart_mapping.candidate_generator import CandidateGenerator
+from app.notion.smart_mapping.detector_registry import DetectorRegistry
+from app.notion.smart_mapping.field_detector_aggregator import FieldDetectorAggregator
+from app.notion.smart_mapping.notion_database_engine import NotionDatabaseEngine
+from app.notion.smart_mapping.notion_page_engine import NotionPageEngine
+from app.notion.smart_mapping.schema_parser import SchemaParser
+from app.notion.smart_mapping.task_candidate import TaskCandidateBuilder
 from app.scheduling.services.free_time_finder import FreeTimeFinder
 from app.scheduling.services.task_prioritizer import TaskPrioritizer
 from app.scheduling.services.time_block_generator import TimeBlockGenerator
-from app.utils.caching import get_cache_service, ICacheService
-from app.notion.smart_mapping.detector_registry import DetectorRegistry
-from app.notion.smart_mapping.field_detector_aggregator import FieldDetectorAggregator
-from app.subscriptions.services.service import SubscriptionsService
 from app.subscriptions.repositories.repository import SubscriptionsRepository
-from app.features.services.service import FeaturesService
-from app.features.services.ai_data_service import AIDataService
-from app.features.repositories.repository import FeaturesRepository, AIDataRepository
-from app.utils.logging_service import LoggingService
-from app.notion.smart_mapping.candidate_generator import CandidateGenerator
-from app.notion.smart_mapping.schema_parser import SchemaParser
-from app.notion.smart_mapping.task_candidate import TaskCandidateBuilder
+from app.subscriptions.services.service import SubscriptionsService
+from app.user_preferences.preferences_store.repository import PreferencesRepository
+from app.user_preferences.preferences_store.service import PreferencesService
+from app.utils.caching import get_cache_service, ICacheService
 from app.utils.encryption import Encryptor
-import logging
+from app.utils.logging_service import LoggingService
+from app.utils.security import SecurityService
 
 
 class ServiceFactory:

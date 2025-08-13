@@ -1,7 +1,7 @@
 from datetime import datetime
-from unittest.mock import Mock, patch
+from unittest.mock import Mock
+
 import pytest
-from flask import g
 
 from app.notion.models.entities import FieldMapping
 from app.notion.smart_mapping.task_candidate import TaskCandidateBuilder

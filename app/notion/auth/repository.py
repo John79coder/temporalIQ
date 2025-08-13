@@ -1,9 +1,10 @@
 # app/notion/auth/repository.py
 from sqlalchemy.orm import Session
 
-from app.utils.time_zone import TimeZone
 from app.notion.models.entities import NotionConnection
 from app.utils.exceptions import DatabaseError, wrap_external_error
+from app.utils.time_zone import TimeZone
+
 
 class NotionAuthRepository:
 

@@ -1,8 +1,10 @@
 # app/icloud/client/interfaces.py
 from abc import ABC, abstractmethod
-from typing import List
 from datetime import datetime
+from typing import List
+
 from app.icloud.models.schemas import CalendarEvent, CalendarMetadata, EventWriteRequest
+
 
 class ICalendarClient(ABC):
     @abstractmethod

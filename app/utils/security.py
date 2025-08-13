@@ -1,13 +1,14 @@
 # app/utils/security.py
-from typing import Any
 import json
-
-from  app.utils.encryption import Encryptor
-from app.utils.exceptions import ServiceUnavailableError, wrap_external_error
+from typing import Any
 
 from passlib.context import CryptContext
 
+from app.utils.encryption import Encryptor
+from app.utils.exceptions import ServiceUnavailableError, wrap_external_error
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 
 class SecurityService:
     def __init__(self):

@@ -1,8 +1,11 @@
-from pydantic import BaseModel, model_serializer, field_validator, ConfigDict
-from typing import List
-from datetime import datetime, timedelta
-from app.utils.time_zone import TimeZone
 import re
+from datetime import datetime, timedelta
+from typing import List
+
+from pydantic import BaseModel, model_serializer, field_validator, ConfigDict
+
+from app.utils.time_zone import TimeZone
+
 
 class BaseOutModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -14,6 +17,7 @@ class BaseOutModel(BaseModel):
             if isinstance(value, datetime):
                 data[key] = TimeZone.serialize_datetime(value)
         return data
+
 
 class TimeBlockIn(BaseModel):
     start: datetime
@@ -32,6 +36,7 @@ class TimeBlockIn(BaseModel):
         if "start" in values.data and v <= values.data["start"]:
             raise ValueError("end must be after start")
         return v
+
 
 class SchedulePreviewIn(BaseModel):
     user_id: int
@@ -62,15 +67,18 @@ class SchedulePreviewIn(BaseModel):
             raise ValueError("Invalid time format")
         return v
 
+
 class ScheduleConfirmIn(BaseModel):
     user_id: int
     calendar_id: str
     time_blocks: List[TimeBlockIn]
 
+
 class TimeBlockOut(BaseOutModel):
     start: datetime
     end: datetime
     task_id: int | None = None
+
 
 class SchedulePreviewOut(BaseOutModel):
     time_blocks: List[TimeBlockOut]

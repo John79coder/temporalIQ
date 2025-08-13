@@ -1,12 +1,15 @@
 # tests/scheduling/test_models.py
-import pytest
-from sqlalchemy.exc import IntegrityError
-from app.scheduling.models.entities import Task, TimeBlock
-from app.auth.models.entities import User
-from passlib.context import CryptContext
 from datetime import datetime, timezone
 
+import pytest
+from passlib.context import CryptContext
+from sqlalchemy.exc import IntegrityError
+
+from app.auth.models.entities import User
+from app.scheduling.models.entities import Task, TimeBlock
+
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 
 def test_task_creation(db_session):
     user = User(email="test@example.com", hashed_password=pwd_context.hash("Secure123!"))
@@ -30,6 +33,7 @@ def test_task_creation(db_session):
     assert retrieved.priority == "high"
     assert retrieved.status == "todo"
 
+
 def test_time_block_creation(db_session):
     user = User(email="test@example.com", hashed_password=pwd_context.hash("Secure123!"))
     db_session.add(user)
@@ -50,6 +54,7 @@ def test_time_block_creation(db_session):
     assert retrieved.calendar_id == "cal1"
     assert retrieved.task_id == task.id
 
+
 def test_task_missing_required_fields(db_session):
     user = User(email="test@example.com", hashed_password=pwd_context.hash("Secure123!"))
     db_session.add(user)
@@ -58,6 +63,7 @@ def test_task_missing_required_fields(db_session):
     db_session.add(task)
     with pytest.raises(IntegrityError, match="not-null constraint"):
         db_session.commit()
+
 
 def test_time_block_missing_required_fields(db_session):
     user = User(email="test@example.com", hashed_password=pwd_context.hash("Secure123!"))

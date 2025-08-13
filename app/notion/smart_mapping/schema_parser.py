@@ -1,6 +1,8 @@
 # notion/smart_mapping/schema_parser.py
-from app.notion.smart_mapping.interfaces import ISchemaParser
 from typing import List
+
+from app.notion.smart_mapping.interfaces import ISchemaParser
+
 
 class SchemaParser(ISchemaParser):
     def normalize(self, notion_schema: dict) -> List[dict]:

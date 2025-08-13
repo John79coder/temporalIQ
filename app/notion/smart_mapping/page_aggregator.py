@@ -1,13 +1,15 @@
 from typing import List
+
+from app.notion.models.schemas import PartialCandidate
 from app.notion.smart_mapping.models import TaskCandidateData
 from app.notion.smart_mapping.sectionizer import BlockSection
 from app.utils.time_zone import TimeZone
-from app.notion.models.schemas import PartialCandidate
 
 
 class Aggregator:
-    def aggregate(self, partial_candidates: List['PartialCandidate'], user_id: int, page_id: str, sections: List[BlockSection]) -> \
-    List[TaskCandidateData]:
+    def aggregate(self, partial_candidates: List['PartialCandidate'], user_id: int, page_id: str,
+                  sections: List[BlockSection]) -> \
+            List[TaskCandidateData]:
         """Merge partial candidates into full TaskCandidates, inferring single/multi-task."""
         if not partial_candidates:
             return []

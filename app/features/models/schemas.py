@@ -1,8 +1,11 @@
 # app/features/models/schemas.py
-from pydantic import BaseModel, field_validator, Field, model_serializer, ConfigDict
-from typing import Optional
 from datetime import datetime
+from typing import Optional
+
+from pydantic import BaseModel, field_validator, Field, model_serializer, ConfigDict
+
 from app.utils.time_zone import TimeZone
+
 
 class BaseOutModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -14,6 +17,7 @@ class BaseOutModel(BaseModel):
             if isinstance(value, datetime):
                 data[key] = TimeZone.serialize_datetime(value)
         return data
+
 
 class AISettingsUpdate(BaseModel):
     use_llm_mapping: Optional[bool] = None
@@ -29,11 +33,13 @@ class AISettingsUpdate(BaseModel):
     slot_ranking_learning_scope: Optional[str] = None
     use_nlp_scoring: Optional[bool] = None
 
-    @field_validator("urgency_learning_scope", "duration_learning_scope", "mapping_learning_scope", "slot_ranking_learning_scope")
+    @field_validator("urgency_learning_scope", "duration_learning_scope", "mapping_learning_scope",
+                     "slot_ranking_learning_scope")
     def validate_scope(cls, v: Optional[str]) -> Optional[str]:
         if v is not None and v not in ['user', 'global', 'off']:
             raise ValueError("Scope must be 'user', 'global', or 'off'")
         return v
+
 
 class AISettingsOut(BaseOutModel):
     id: int
@@ -53,6 +59,7 @@ class AISettingsOut(BaseOutModel):
     created_at: datetime
     updated_at: Optional[datetime]
 
+
 class AITrainingEventIn(BaseModel):
     user_id: Optional[int] = None
     task_id: Optional[int] = None
@@ -67,6 +74,7 @@ class AITrainingEventIn(BaseModel):
             raise ValueError("JSON fields must be dictionaries")
         return v
 
+
 class AITrainingEventOut(BaseOutModel):
     id: int
     user_id: Optional[int]
@@ -78,13 +86,16 @@ class AITrainingEventOut(BaseOutModel):
     created_at: datetime
     updated_at: Optional[datetime]
 
+
 class DurationLogInput(BaseModel):
     num_events: int
     day_length_hours: float
     urgency: float
 
+
 class DurationLogLabel(BaseModel):
     duration_minutes: float
+
 
 class SlotChoiceInput(BaseModel):
     slot_start: str
@@ -97,17 +108,22 @@ class SlotChoiceInput(BaseModel):
             raise ValueError("Urgency must be between 0.0 and 1.0")
         return v
 
+
 class SlotChoiceLabel(BaseModel):
     selected: bool
+
 
 class MappingFeedbackInput(BaseModel):
     field_name: str
 
+
 class MappingFeedbackLabel(BaseModel):
     concept: str
 
+
 class UrgencyFeedbackInput(BaseModel):
     title: str
+
 
 class UrgencyFeedbackLabel(BaseModel):
     urgency_score: float

@@ -1,13 +1,15 @@
 # app/notion/mapping_storage/service.py
 import logging
 from typing import List
+
 from sqlalchemy.orm import Session
+
 from app.notion.mapping_storage.repository import MappingRepository
 from app.notion.models.entities import FieldMapping, TaskCandidate
 from app.notion.models.schemas import FieldMappingIn
-from app.utils.exceptions import DatabaseError, wrap_external_error
 from app.notion.repositories.repository import TaskCandidateRepository
 from app.notion.smart_mapping.models import TaskCandidateData
+from app.utils.exceptions import DatabaseError, wrap_external_error
 
 
 class MappingService:

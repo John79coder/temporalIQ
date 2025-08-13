@@ -2,9 +2,11 @@
 from app.extensions import db
 from app.utils.time_zone import TimeZone
 
+
 class TimestampMixin:
     created_at = db.Column(db.DateTime(timezone=True), default=TimeZone.utc_now)
     updated_at = db.Column(db.DateTime(timezone=True), default=TimeZone.utc_now, onupdate=TimeZone.utc_now)
+
 
 class NotionConnection(db.Model, TimestampMixin):
     __tablename__ = "notion_connections"
@@ -30,6 +32,7 @@ class NotionConnection(db.Model, TimestampMixin):
             "workspace_id": self.workspace_id
         }
 
+
 class FieldMapping(db.Model, TimestampMixin):
     __tablename__ = "field_mappings"
     id = db.Column(db.Integer, primary_key=True)
@@ -54,6 +57,7 @@ class FieldMapping(db.Model, TimestampMixin):
             'created_at': self.created_at,
             'updated_at': self.updated_at
         }
+
 
 class TaskCandidate(db.Model, TimestampMixin):
     __tablename__ = "task_candidates"

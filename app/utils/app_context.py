@@ -1,6 +1,7 @@
 # app/utils/app_context.py
 from typing import Any
 
+
 class AppContext:
     def __init__(self):
         self.services: dict[str, Any] = {}

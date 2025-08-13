@@ -1,8 +1,11 @@
-from pydantic import BaseModel, model_serializer, Field, field_validator, HttpUrl, ConfigDict
 from datetime import datetime
-from typing import Optional, List
 from enum import Enum
+from typing import Optional, List
+
+from pydantic import BaseModel, model_serializer, Field, field_validator, HttpUrl, ConfigDict
+
 from app.utils.time_zone import TimeZone
+
 
 class BaseOutModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -15,15 +18,18 @@ class BaseOutModel(BaseModel):
                 data[key] = TimeZone.serialize_datetime(value)
         return data
 
+
 class Priority(str, Enum):
     HIGH = "high"
     MEDIUM = "medium"
     LOW = "low"
 
+
 class Status(str, Enum):
     TODO = "todo"
     IN_PROGRESS = "in_progress"
     DONE = "done"
+
 
 class NotionTokenIn(BaseModel):
     user_id: int = Field(ge=1, description="User ID, must be positive")
@@ -35,6 +41,7 @@ class NotionTokenIn(BaseModel):
         if not v.strip():
             raise ValueError("Code cannot be empty or whitespace")
         return v
+
 
 class NotionTokenOut(BaseOutModel):
     user_id: int = Field(ge=1, description="User ID, must be positive")
@@ -50,6 +57,7 @@ class NotionTokenOut(BaseOutModel):
             raise ValueError("Access token cannot be empty or whitespace")
         return v
 
+
 class DatabaseOut(BaseOutModel):
     id: str = Field(min_length=1, pattern=r"^[a-zA-Z0-9-]+$", description="Notion database ID")
     title: str = Field(min_length=1, description="Database title")
@@ -59,6 +67,7 @@ class DatabaseOut(BaseOutModel):
         if not v.strip():
             raise ValueError("Title cannot be empty or whitespace")
         return v
+
 
 class FieldMappingIn(BaseModel):
     user_id: int = Field(ge=1, description="User ID, must be positive")
@@ -72,6 +81,7 @@ class FieldMappingIn(BaseModel):
         if v is not None and not v.strip():
             raise ValueError("Field name cannot be empty or whitespace")
         return v
+
 
 class FieldMappingOut(BaseOutModel):
     id: int = Field(ge=1, description="Mapping ID, must be positive")
@@ -88,6 +98,7 @@ class FieldMappingOut(BaseOutModel):
         if v is not None and not v.strip():
             raise ValueError("Field name cannot be empty or whitespace")
         return v
+
 
 class TaskCandidateOut(BaseOutModel):
     title: str = Field(min_length=1, description="Task title")
@@ -127,6 +138,7 @@ class TaskCandidateOut(BaseOutModel):
                     raise ValueError("Tags cannot be empty or whitespace")
         return v
 
+
 # NEW: Added PartialCandidate for extractor partials
 class PartialCandidate(BaseModel):
     title: Optional[str] = None
@@ -140,7 +152,7 @@ class PartialCandidate(BaseModel):
     urgency: float = 0.5
 
     # NEW: Positional metadata to support stitching/adjacency
-    block_id: Optional[str] = None         # Notion block ID the partial was extracted from
-    block_index: Optional[int] = None      # Index of the block within the section
-    span_index: Optional[int] = None       # Index of this partial within the block
-    extraction_order: Optional[int] = None # Global sequence number of extraction
+    block_id: Optional[str] = None  # Notion block ID the partial was extracted from
+    block_index: Optional[int] = None  # Index of the block within the section
+    span_index: Optional[int] = None  # Index of this partial within the block
+    extraction_order: Optional[int] = None  # Global sequence number of extraction

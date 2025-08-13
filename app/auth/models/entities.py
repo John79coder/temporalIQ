@@ -2,9 +2,11 @@
 from app.extensions import db
 from app.utils.time_zone import TimeZone
 
+
 class TimestampMixin:
     created_at = db.Column(db.DateTime(timezone=True), default=TimeZone.utc_now)
     updated_at = db.Column(db.DateTime(timezone=True), default=TimeZone.utc_now, onupdate=TimeZone.utc_now)
+
 
 class User(db.Model, TimestampMixin):
     __tablename__ = "users"
@@ -38,12 +40,14 @@ class User(db.Model, TimestampMixin):
         user.backup_codes = data.get("backup_codes")
         return user
 
+
 class VerificationToken(db.Model):
     __tablename__ = "verification_tokens"
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     token = db.Column(db.String, nullable=False, unique=True)
     expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
+
 
 class PasswordResetToken(db.Model):
     __tablename__ = "password_reset_tokens"

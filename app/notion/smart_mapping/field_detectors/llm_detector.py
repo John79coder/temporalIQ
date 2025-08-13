@@ -1,14 +1,16 @@
 # app/notion/smart_mapping/field_detectors/llm_detector.py
+import json
+import os
+from typing import List
+
+import openai
 from sqlalchemy.orm.session import Session
+
+from app.features.services.service import FeaturesService
 from app.notion.smart_mapping.field_detectors.base import FieldDetector
 from app.notion.smart_mapping.models import FieldMatch
 from app.utils.exceptions import wrap_external_error, ServiceUnavailableError
-from typing import List
-import openai
-import os
-import json
 from app.utils.logging_service import LoggingService
-from app.features.services.service import FeaturesService
 
 
 class LLMDetector(FieldDetector):
@@ -18,7 +20,8 @@ class LLMDetector(FieldDetector):
         api_key = os.getenv("OPENAI_API_KEY")
         self.client = openai.OpenAI(api_key=api_key) if api_key else None
 
-    def detect(self, fields: list[dict], rows: List[dict] = None, db: Session = None, user_id: int = None) -> list[FieldMatch]:
+    def detect(self, fields: list[dict], rows: List[dict] = None, db: Session = None, user_id: int = None) -> list[
+        FieldMatch]:
         if not self.client:
             raise ServiceUnavailableError("OpenAI API key not configured")
 
@@ -31,7 +34,8 @@ class LLMDetector(FieldDetector):
         try:
             schema_str = "\n".join([f"- {f['name']}: type={f['type']}" for f in fields])
             row_sample = rows[:5] if rows else []  # Limit to 5 for prompt size
-            rows_str = "\nSample rows: " + "\n".join([str(row.get('properties', {})) for row in row_sample]) if row_sample else ""
+            rows_str = "\nSample rows: " + "\n".join(
+                [str(row.get('properties', {})) for row in row_sample]) if row_sample else ""
 
             prompt = f"""
 Map these Notion fields to task concepts like title, due_date, duration, priority, status, etc.
@@ -52,7 +56,8 @@ Resolve ambiguities, e.g., if multiple dates, pick the most likely due_date and 
             try:
                 matches_list = json.loads(matches_json)
                 if isinstance(matches_list, dict):
-                    matches_list = matches_list.get('matches', []) or list(matches_list.values())[0] if len(matches_list) == 1 else []
+                    matches_list = matches_list.get('matches', []) or list(matches_list.values())[0] if len(
+                        matches_list) == 1 else []
                 return [FieldMatch(**m) for m in matches_list]
             except json.JSONDecodeError as e:
                 self.logging_service.error(f"Failed to parse LLM response JSON: {str(e)}", user_id=user_id)

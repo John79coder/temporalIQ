@@ -1,15 +1,16 @@
 # tests/auth/test_auth_routes_2.py
 import uuid
 from unittest.mock import patch
+
 from flask import g
+from passlib.context import CryptContext
 
 from app import mail
 from app.auth.models.entities import User, PasswordResetToken
-from passlib.context import CryptContext
-
 from tests.conftest import DEFAULT_TEST_PASSWORD
 
 pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 
 # Existing tests (unchanged from your provided file)
 @patch("app.auth.email_verification.service.mail.send")
@@ -30,6 +31,7 @@ def test_signup_success(mock_send, client, db_session, app):
         assert user is not None
         assert not user.is_verified
 
+
 def test_signup_duplicate_email(client, db_session, app, test_user):
     user, _ = test_user
     response = client.post("/auth/signup", json={
@@ -38,6 +40,7 @@ def test_signup_duplicate_email(client, db_session, app, test_user):
     }, headers={"X-CSRF-Token": client.csrf_token})
     assert response.status_code == 401
     assert "Email already exists" in response.json["detail"]
+
 
 def test_signup_invalid_input(authorized_client, db_session, app):
     with app.app_context():
@@ -52,11 +55,10 @@ def test_signup_invalid_input(authorized_client, db_session, app):
         assert response.status_code == 400
         assert "email address" in response.json["detail"]
 
+
 # NEW: Tests for Password Reset/Recovery
 @patch("flask_mail.Mail.send")
 def test_password_reset_success(mock_send, client, db_session, app, test_user, authentication_service):
-
-
     with app.app_context():
         g.db = db_session
 
@@ -64,24 +66,29 @@ def test_password_reset_success(mock_send, client, db_session, app, test_user, a
         authentication_service.update_verified(db_session, user_id)
         db_session.commit()
 
-        response = client.post("/auth/reset-password", json={"email": user.email}, headers={"X-CSRF-Token": client.csrf_token})
+        response = client.post("/auth/reset-password", json={"email": user.email},
+                               headers={"X-CSRF-Token": client.csrf_token})
         assert response.status_code == 200
         assert "Password reset link sent" in response.json["message"]
         token = db_session.query(PasswordResetToken).filter_by(user_id=user.id).first().token
-        response = client.post("/auth/reset-password/confirm", json={"token": token, "new_password": "NewSecure123!"}, headers={"X-CSRF-Token": client.csrf_token})
+        response = client.post("/auth/reset-password/confirm", json={"token": token, "new_password": "NewSecure123!"},
+                               headers={"X-CSRF-Token": client.csrf_token})
         assert response.status_code == 200
         assert "jwt" in response.json
         updated_user = db_session.query(User).filter_by(id=user.id).first()
         assert authentication_service.verify_password("NewSecure123!", updated_user.hashed_password)
 
+
 @patch("flask_mail.Mail.send")
 def test_password_reset_invalid(mock_send, client, db_session, app):
     with app.app_context():
         g.db = db_session
-        response = client.post("/auth/reset-password", json={"email": "invalid@example.com"}, headers={"X-CSRF-Token": client.csrf_token})
+        response = client.post("/auth/reset-password", json={"email": "invalid@example.com"},
+                               headers={"X-CSRF-Token": client.csrf_token})
         assert response.status_code == 400
         assert "User not found" in response.json["detail"]
-        response = client.post("/auth/reset-password/confirm", json={"token": "fake", "new_password": "NewPass"}, headers={"X-CSRF-Token": client.csrf_token})
+        response = client.post("/auth/reset-password/confirm", json={"token": "fake", "new_password": "NewPass"},
+                               headers={"X-CSRF-Token": client.csrf_token})
         assert response.status_code == 400
         assert "Invalid or expired reset token" in response.json["detail"]
 
@@ -94,7 +101,6 @@ import time  # Add import
 
 @patch("app.auth.email_verification.service.EmailVerificationService.verify_token")
 def test_verify_rate_limit(mock_verify, client, db_session, app):
-
     with app.app_context():
         app.config["TESTING"] = False
         try:
@@ -128,11 +134,13 @@ def test_verify_rate_limit(mock_verify, client, db_session, app):
         finally:
             app.config["TESTING"] = True
 
+
 def test_verify_rate_limit_under(client, db_session, app):
     with app.app_context():
         g.db = db_session
         response = client.post("/auth/verify", json={"token": "valid"}, headers={"X-CSRF-Token": client.csrf_token})
         assert response.status_code == 200 or 400  # Success or invalid, but not rate limit
+
 
 # NEW: Tests for 2FA/MFA
 def test_2fa_setup_success(authorized_client, db_session, app, test_user):
@@ -177,17 +185,20 @@ def test_2fa_verify_success_invalid(authorized_client, db_session, app, test_use
                 assert response.status_code == 400
                 assert "Invalid 2FA code" in response.json["detail"]
 
+
 @patch("flask_mail.Mail.send")
 def test_sendgrid_verification_email(mock_send, client, db_session, app):
     with app.app_context():
         g.db = db_session
         email = f"test_{uuid.uuid4().hex}@example.com"
-        response = client.post("/auth/signup", json={"email": email, "password": "Secure123!"}, headers={"X-CSRF-Token": client.csrf_token})
+        response = client.post("/auth/signup", json={"email": email, "password": "Secure123!"},
+                               headers={"X-CSRF-Token": client.csrf_token})
         assert response.status_code == 200
         assert mock_send.called
         sent_msg = mock_send.call_args[0][0]
         assert sent_msg.subject.lower() == "verify your email"  # Case-insensitive
         assert email in sent_msg.recipients
+
 
 def test_sendgrid_reset_email(client, db_session, app, test_user, authentication_service):
     with app.app_context():
@@ -197,7 +208,8 @@ def test_sendgrid_reset_email(client, db_session, app, test_user, authentication
 
         g.db = db_session
         with mail.record_messages() as outbox:
-            response = client.post("/auth/reset-password", json={"email": user.email}, headers={"X-CSRF-Token": client.csrf_token})
+            response = client.post("/auth/reset-password", json={"email": user.email},
+                                   headers={"X-CSRF-Token": client.csrf_token})
             assert response.status_code == 200
             assert len(outbox) == 1  # Assert an email was "sent" to outbox
             sent_msg = outbox[0]

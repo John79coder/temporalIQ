@@ -1,17 +1,18 @@
 # app/icloud/client/caldav_client.py
-from typing import List
+import logging
+import uuid
 from datetime import datetime
+from typing import List
 from xml.etree.ElementTree import ParseError
+
 import caldav
 from caldav.elements import dav
-import uuid
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
+
+from app.icloud.client.interfaces import ICalendarClient
 from app.icloud.models.schemas import CalendarEvent, CalendarMetadata, EventWriteRequest
 from app.utils.exceptions import CalendarError, wrap_external_error
 from app.utils.time_zone import TimeZone
-from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
-import logging
-
-from app.icloud.client.interfaces import ICalendarClient
 
 
 class CalDAVClient(ICalendarClient):

@@ -1,9 +1,12 @@
-from app.notion.smart_mapping.page_value_extractors.base import PageValueExtractor
-from app.features.services.service import FeaturesService
-from sqlalchemy.orm import Session
 from typing import List, Dict
+
+from sqlalchemy.orm import Session
+
+from app.features.services.service import FeaturesService
 from app.notion.models.schemas import PartialCandidate
+from app.notion.smart_mapping.page_value_extractors.base import PageValueExtractor
 from app.utils.date_parser import custom_parse_date
+
 
 class DueDateExtractor(PageValueExtractor):
     def __init__(self, features_service: FeaturesService):

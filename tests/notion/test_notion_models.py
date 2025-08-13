@@ -1,11 +1,13 @@
 # tests/notion/test_models.py
-import pytest
-from sqlalchemy.exc import IntegrityError
-from app.notion.models.entities import NotionConnection, FieldMapping, TaskCandidate
 from datetime import datetime, timezone
 
-def test_notion_connection_uniqueness(app, db_session, test_user):
+import pytest
+from sqlalchemy.exc import IntegrityError
 
+from app.notion.models.entities import NotionConnection, FieldMapping, TaskCandidate
+
+
+def test_notion_connection_uniqueness(app, db_session, test_user):
     user, _ = test_user
 
     with app.app_context():
@@ -35,9 +37,7 @@ def test_notion_connection_uniqueness(app, db_session, test_user):
         db_session.rollback()  # Ensure session recovery
 
 
-
 def test_field_mapping_required_fields(db_session, test_user):
-
     user, _ = test_user
 
     field_mapping = FieldMapping(user_id=user.id)
@@ -49,7 +49,6 @@ def test_field_mapping_required_fields(db_session, test_user):
 
 
 def test_task_candidate_creation(db_session, test_user):
-
     user, _ = test_user
 
     task_candidate = TaskCandidate(

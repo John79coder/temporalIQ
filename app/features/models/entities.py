@@ -2,9 +2,11 @@
 from app.extensions import db
 from app.utils.time_zone import TimeZone
 
+
 class TimestampMixin:
     created_at = db.Column(db.DateTime(timezone=True), default=TimeZone.utc_now)
     updated_at = db.Column(db.DateTime(timezone=True), default=TimeZone.utc_now, onupdate=TimeZone.utc_now)
+
 
 class UserAISettings(db.Model, TimestampMixin):
     __tablename__ = "user_ai_settings"
@@ -50,6 +52,7 @@ class UserAISettings(db.Model, TimestampMixin):
         settings.created_at = data.get("created_at")
         settings.updated_at = data.get("updated_at")
         return settings
+
 
 class AITrainingEvent(db.Model, TimestampMixin):
     __tablename__ = "ai_training_events"

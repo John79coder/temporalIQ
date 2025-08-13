@@ -1,15 +1,16 @@
 # tests/icloud/test_icloud_services.py
-from app.utils.exceptions import CalendarError
-import pytest
 from unittest.mock import Mock, patch, MagicMock
-from datetime import datetime, timezone
+
+import pytest
+
+from app.auth.models.entities import User
+from app.icloud.models.schemas import CalendarMetadata, TimeBlock
+from app.icloud.repositories.repository import ICloudRepository
 from app.icloud.services.client_manager import CalDAVClientManager
 from app.icloud.services.event_service import CalDAVEventService
 from app.icloud.services.time_block_service import TimeBlockService
-from app.icloud.models.schemas import CalendarMetadata, TimeBlock
-from app.icloud.repositories.repository import ICloudRepository
 from app.utils.encryption import Encryptor
-from app.auth.models.entities import User
+from app.utils.exceptions import CalendarError
 
 
 class PicklableMock:
@@ -30,13 +31,16 @@ class PicklableMock:
 def icloud_repo():
     return Mock(spec=ICloudRepository)
 
+
 @pytest.fixture
 def client_manager(caching_service, icloud_repo):
     return CalDAVClientManager(caching_service, icloud_repo)
 
+
 @pytest.fixture
 def event_service(caching_service, icloud_repo, client_manager):
     return CalDAVEventService(caching_service, icloud_repo, client_manager)
+
 
 @pytest.fixture
 def time_block_service(caching_service, client_manager):
@@ -47,12 +51,12 @@ def time_block_service(caching_service, client_manager):
 @patch('app.icloud.services.client_manager.CalDAVClient')
 @patch('app.utils.time_zone.TimeZone.serialize_datetime')
 def test_client_manager_get_caldav_client(
-    mock_serialize_datetime,
-    mock_caldav_client,
-    mock_decorator,
-    client_manager,
-    icloud_repo,
-    caching_service
+        mock_serialize_datetime,
+        mock_caldav_client,
+        mock_decorator,
+        client_manager,
+        icloud_repo,
+        caching_service
 ):
     db = Mock()
     user_id = 1
@@ -93,9 +97,9 @@ def test_client_manager_get_caldav_client(
     assert isinstance(client_cache, PicklableMock)
     assert client is mock_client_instance
 
+
 @patch('app.icloud.services.client_manager.CalDAVClientManager.get_caldav_client_for_user')
 def test_event_service_list_calendars(mock_get_caldav_client, event_service, caching_service):
-
     db = Mock()
     user_id = 1
 
@@ -108,7 +112,6 @@ def test_event_service_list_calendars(mock_get_caldav_client, event_service, cac
     mock_client.list_calendars.return_value = calendars
 
     mock_get_caldav_client.return_value = mock_client
-
 
     result = event_service.list_user_calendars(user_id, db)
 
@@ -126,7 +129,6 @@ def test_event_service_list_calendars(mock_get_caldav_client, event_service, cac
 
 @patch('app.icloud.services.client_manager.CalDAVClientManager.get_caldav_client_for_user')
 def test_time_block_service_get_available_blocks(mock_get_caldav_client, time_block_service, client_manager):
-
     db = Mock()
     user_id = 1
     calendar_id = "cal1"
@@ -138,15 +140,16 @@ def test_time_block_service_get_available_blocks(mock_get_caldav_client, time_bl
 
     mock_get_caldav_client.return_value = mock_client
 
-    blocks = time_block_service.get_available_time_blocks(user_id, db, calendar_id, start_date, end_date, "09:00", "17:00")
+    blocks = time_block_service.get_available_time_blocks(user_id, db, calendar_id, start_date, end_date, "09:00",
+                                                          "17:00")
 
     assert isinstance(blocks, list)
     assert len(blocks) > 0
     assert all(isinstance(block, TimeBlock) for block in blocks)
 
 
-
 from datetime import datetime, timezone
+
 
 @patch("caldav.DAVClient.__init__", side_effect=Exception("Network failure"))
 @patch("app.icloud.repositories.repository.ICloudRepository.get_icloud_connection_by_user")

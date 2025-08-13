@@ -1,7 +1,8 @@
 # app/scripts/init_db.py
+import logging
 import os
 import sys
-import logging
+
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 from sqlalchemy.exc import OperationalError
@@ -18,6 +19,7 @@ logger.info(f"Added project root to sys.path: {project_root}")
 from app import create_app
 from app.extensions import db
 from config import Config
+
 
 def create_database_if_not_exists(db_url):
     """Create the PostgreSQL database if it doesn't exist."""
@@ -44,6 +46,7 @@ def create_database_if_not_exists(db_url):
     except Exception as e:
         logger.error(f"Failed to create database: {e}")
         raise
+
 
 app = create_app(Config)
 

@@ -2,43 +2,51 @@
 import logging
 import os
 import uuid
+
+import psycopg2
 import pytest
+from flask_jwt_extended import create_access_token
 from flask_session import Session
 from passlib.context import CryptContext
+from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
+
 from app import create_app
 from app.extensions import db, cache as cache_instance
-from config import TestingConfig
 from app.utils.service_factory import ServiceFactory
-from flask_jwt_extended import create_access_token
+from config import TestingConfig
 from tests.utils.custom_client import CSRFClient
-import psycopg2
-from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
 DEFAULT_TEST_PASSWORD = "Secure123!"
 PASSWORD_CONTEXT = CryptContext(schemes=["bcrypt"], deprecated="auto")
+
 
 def pytest_configure(config):
     project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
     os.chdir(project_root)
     print(f"Set working directory to: {os.getcwd()}")
 
+
 @pytest.fixture
 def user_cache():
     return {}
+
 
 @pytest.fixture
 def user_factory(db_session, user_cache, authentication_service):
     def create_user():
         if 'user' not in user_cache:
-            user_cache['user'] = authentication_service.create_user(db_session, f"{uuid.uuid4().hex}@example.com", DEFAULT_TEST_PASSWORD)
+            user_cache['user'] = authentication_service.create_user(db_session, f"{uuid.uuid4().hex}@example.com",
+                                                                    DEFAULT_TEST_PASSWORD)
 
         return user_cache['user']
 
     return create_user
 
+
 @pytest.fixture(autouse=True)
 def clear_user_cache(user_cache):
     user_cache.clear()
+
 
 def create_test_database():
     test_db_url = "postgresql://postgres:postgres@localhost:5432/testdb"
@@ -63,6 +71,7 @@ def create_test_database():
     except Exception as e:
         raise Exception(f"Failed to create test database: {e}")
     return test_db_url
+
 
 @pytest.fixture(scope="session")
 def app():
@@ -92,6 +101,7 @@ def app():
         db.session.remove()
         db.drop_all()
 
+
 @pytest.fixture(scope="function", autouse=True)
 def clean_database(app):
     with app.app_context():
@@ -113,11 +123,13 @@ def clean_database(app):
             logging.error(f"Database cleanup failed in clean_database(app) fixture: {e}")
             raise
 
+
 @pytest.fixture(scope="function", autouse=True)
 def reset_app_state(app):
     with app.app_context():
         app._got_first_request = False
         yield
+
 
 @pytest.fixture(scope="function", autouse=True)
 def clean_cache(app):
@@ -126,10 +138,12 @@ def clean_cache(app):
         cache_service.clear_all()
         yield
 
+
 @pytest.fixture
 def db_session(app):
     with app.app_context():
         yield db.session
+
 
 @pytest.fixture
 def client(app):
@@ -169,10 +183,12 @@ def authorized_client(app, db_session, user_factory):
 
     return client
 
+
 @pytest.fixture
 def test_user(user_factory):
     user = user_factory()
     return user, user.id
+
 
 @pytest.fixture(scope="function")
 def ai_data_service(app):
@@ -180,17 +196,20 @@ def ai_data_service(app):
         ai_data_service = app.extensions['app_context'].get_service('ai_data_service')
         yield ai_data_service
 
+
 @pytest.fixture
 def features_service(app):
     with app.app_context():
         features_service = app.extensions['app_context'].get_service('features_service')
         yield features_service
 
+
 @pytest.fixture
 def preferences_service(app):
     with app.app_context():
         preferences_service = app.extensions['app_context'].get_service('preferences_service')
         yield preferences_service
+
 
 @pytest.fixture
 def logging_service(app):
@@ -200,11 +219,13 @@ def logging_service(app):
         logging_service.info("LoggingService fixture created")
         yield logging_service
 
+
 @pytest.fixture
 def user_preference_service(app):
     with app.app_context():
         user_preference_service = app.extensions['app_context'].get_service('user_preference_service')
         yield user_preference_service
+
 
 @pytest.fixture
 def caching_service(app):
@@ -212,22 +233,26 @@ def caching_service(app):
         cache_service = app.extensions['app_context'].get_service('caching_service')
         yield cache_service
 
+
 @pytest.fixture
 def mapping_engine(app):
     with app.app_context():
         mapping_engine = app.extensions['app_context'].get_service('mapping_engine')
         yield mapping_engine
 
+
 @pytest.fixture(scope="session", autouse=True)
 def patch_model_metadata():
     from app.notion.models.entities import NotionConnection
     NotionConnection.__table__.extend_existing = True
+
 
 @pytest.fixture
 def authentication_service(app):
     with app.app_context():
         authentication_service = app.extensions['app_context'].get_service('authentication_service')
         yield authentication_service
+
 
 @pytest.fixture
 def encryptor(app):

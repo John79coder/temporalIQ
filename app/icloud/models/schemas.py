@@ -1,9 +1,11 @@
+import re
 from datetime import datetime
 from typing import Optional, List
+
 from pydantic import BaseModel, Field, field_validator, model_serializer, ConfigDict
-import re
 
 from app.utils.time_zone import TimeZone
+
 
 class BaseOutModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -16,17 +18,20 @@ class BaseOutModel(BaseModel):
                 data[key] = TimeZone.serialize_datetime(value)
         return data
 
+
 class CalendarEvent(BaseOutModel):
     start: datetime
     end: datetime
     summary: Optional[str]
     uid: Optional[str]
 
+
 class CalendarMetadata(BaseOutModel):
     calendar_id: str = Field(..., min_length=1)
     display_name: str = Field(..., min_length=1)
     timezone: Optional[str]
     is_writable: bool = True
+
 
 class EventWriteRequest(BaseModel):
     title: str = Field(..., min_length=1)
@@ -42,31 +47,40 @@ class EventWriteRequest(BaseModel):
             return TimeZone.parse_utc_datetime("datetime", v)
         return v
 
+
 class iCloudConnectIn(BaseModel):
     app_password: str = Field(..., min_length=1)
+
 
 class iCloudConnectOut(BaseOutModel):
     message: str
 
+
 class CalendarListOut(BaseOutModel):
     calendars: List[CalendarMetadata]
 
+
 class EventListOut(BaseOutModel):
     events: List[CalendarEvent]
+
 
 class EventCreateIn(BaseModel):
     calendar_id: str = Field(..., min_length=1)
     event: EventWriteRequest
 
+
 class EventCreateOut(BaseOutModel):
     message: str
+
 
 class TimeBlock(BaseOutModel):
     start: datetime
     end: datetime
 
+
 class AvailableTimeBlocksOut(BaseOutModel):
     time_blocks: List[TimeBlock]
+
 
 class AvailableTimeBlocksIn(BaseModel):
     calendar_id: str = Field(..., min_length=1)
@@ -88,9 +102,11 @@ class AvailableTimeBlocksIn(BaseModel):
             raise ValueError("Time must be in HH:MM format (e.g., 09:00 to 23:59)")
         return v
 
+
 class ScheduleBlocksIn(BaseModel):
     calendar_id: str = Field(..., min_length=1)
     events: List[EventWriteRequest]
+
 
 class ScheduleBlocksOut(BaseOutModel):
     message: str

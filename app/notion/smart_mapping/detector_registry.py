@@ -1,17 +1,18 @@
 from typing import List
 
-from app.utils.logging_service import LoggingService
-from app.notion.smart_mapping.field_detectors.keyword_matcher import KeywordMatcher
-from app.notion.smart_mapping.field_detectors.string_similarity import StringSimilarityMatcher
-from app.notion.smart_mapping.field_detectors.field_type_heuristics import FieldTypeHeuristics
-from app.notion.smart_mapping.field_detectors.llm_detector import LLMDetector
-from app.notion.smart_mapping.field_detectors.learned_detector import LearnedDetector
-from app.features.services.service import FeaturesService
 from app.features.services.ai_data_service import AIDataService
+from app.features.services.service import FeaturesService
+from app.notion.smart_mapping.field_detectors.field_type_heuristics import FieldTypeHeuristics
+from app.notion.smart_mapping.field_detectors.keyword_matcher import KeywordMatcher
+from app.notion.smart_mapping.field_detectors.learned_detector import LearnedDetector
+from app.notion.smart_mapping.field_detectors.llm_detector import LLMDetector
+from app.notion.smart_mapping.field_detectors.string_similarity import StringSimilarityMatcher
+from app.utils.logging_service import LoggingService
 
 
 class DetectorRegistry:
-    def __init__(self, features_service: FeaturesService, ai_data_service: AIDataService, logging_service: LoggingService):
+    def __init__(self, features_service: FeaturesService, ai_data_service: AIDataService,
+                 logging_service: LoggingService):
         self.features_service = features_service
         self.ai_data_service = ai_data_service
         self.logging_service = logging_service

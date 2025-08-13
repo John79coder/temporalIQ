@@ -1,9 +1,11 @@
 from app.extensions import db
 from app.utils.time_zone import TimeZone
 
+
 class TimestampMixin:
     created_at = db.Column(db.DateTime(timezone=True), default=TimeZone.utc_now)
     updated_at = db.Column(db.DateTime(timezone=True), default=TimeZone.utc_now, onupdate=TimeZone.utc_now)
+
 
 class UserSubscriptions(db.Model, TimestampMixin):
     __tablename__ = "user_subscriptions"

@@ -1,18 +1,21 @@
 import json
+from datetime import datetime, timezone
 from unittest.mock import Mock
 from unittest.mock import patch
+
 from flask import g
-from app.icloud.models.entities import iCloudConnection
+
 from app.auth.models.entities import User
+from app.icloud.models.entities import iCloudConnection
 from app.notion.models.entities import TaskCandidate
-from datetime import datetime, timezone
 from app.utils.encryption import Encryptor
 from app.utils.time_zone import TimeZone
 
 
 @patch('app.icloud.services.event_service.CalDAVEventService.fetch_user_events')
 @patch('app.icloud.services.client_manager.CalDAVClientManager.get_caldav_client_for_user')
-def test_scheduling_preview(mock_get_caldav_client, mock_fetch_user_events, authorized_client, app, db_session, test_user):
+def test_scheduling_preview(mock_get_caldav_client, mock_fetch_user_events, authorized_client, app, db_session,
+                            test_user):
     user, user_id = test_user
     mock_fetch_user_events.return_value = []  # Mock fetch_user_events to return empty list
     mock_get_caldav_client.return_value = Mock()  # Mock CalDAV client to avoid decryption
@@ -47,7 +50,7 @@ def test_scheduling_preview(mock_get_caldav_client, mock_fetch_user_events, auth
         db_session.commit()
 
         start_time = TimeZone.serialize_datetime(datetime(2025, 7, 12, tzinfo=timezone.utc))
-        end_time =  TimeZone.serialize_datetime(datetime(2025, 7, 12, tzinfo=timezone.utc))
+        end_time = TimeZone.serialize_datetime(datetime(2025, 7, 12, tzinfo=timezone.utc))
 
         payload = {
             "user_id": user_id,

@@ -1,11 +1,10 @@
 # tests/icloud/test_models.py
 from app.icloud.models.entities import iCloudConnection, CalendarSelection
-from app.utils.encryption import Encryptor
 from app.icloud.repositories.repository import ICloudRepository
+from app.utils.encryption import Encryptor
 
 
 def test_icloud_connection_creation(db_session, test_user):
-
     user, _ = test_user
 
     encryptor = Encryptor()
@@ -26,7 +25,6 @@ def test_icloud_connection_creation(db_session, test_user):
 
 
 def test_calendar_selection_default(db_session, test_user):
-
     user, _ = test_user
 
     repo = ICloudRepository()

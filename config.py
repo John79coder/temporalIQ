@@ -1,5 +1,7 @@
 # config.py
 import os
+import tempfile
+
 from cryptography.fernet import Fernet
 
 
@@ -28,7 +30,11 @@ class Config:
     STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
     STRIPE_PRICE_ID_PREMIUM = os.getenv("STRIPE_PRICE_ID_PREMIUM")
     MODEL_DIR = os.getenv("MODEL_DIR", "ai_models_cache")
-    SESSION_TYPE = "filesystem"  # Add this line
+
+    SESSION_TYPE = "filesystem"
+    SESSION_FILE_DIR = os.path.join(tempfile.gettempdir(), "flask_session")
+    SESSION_PERMANENT = False
+
     PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
     LOG_FILE_PATH = os.path.join(PROJECT_ROOT, 'log.txt')
 

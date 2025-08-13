@@ -1,8 +1,11 @@
 import re
-from pydantic import BaseModel, EmailStr, field_validator, Field, model_serializer, ConfigDict
 from datetime import datetime
 from typing import Optional
+
+from pydantic import BaseModel, EmailStr, field_validator, Field, model_serializer, ConfigDict
+
 from app.utils.time_zone import TimeZone
+
 
 class BaseOutModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -14,6 +17,7 @@ class BaseOutModel(BaseModel):
             if isinstance(value, datetime):
                 data[key] = TimeZone.serialize_datetime(value)
         return data
+
 
 class UserCreate(BaseModel):
     email: EmailStr
@@ -43,6 +47,7 @@ class UserCreate(BaseModel):
 
         return value
 
+
 class UserLogin(BaseModel):
     email: EmailStr
     password: str = Field(..., min_length=1)
@@ -53,6 +58,7 @@ class UserLogin(BaseModel):
             raise ValueError("Password cannot be blank or just spaces")
         return v
 
+
 class UserOut(BaseOutModel):
     id: int
     email: EmailStr
@@ -61,8 +67,10 @@ class UserOut(BaseOutModel):
     updated_at: Optional[datetime] = None
     time_zone: Optional[str] = None
 
+
 class TokenSchema(BaseModel):
     token: str
+
 
 class AppleSignIn(BaseModel):
     id_token: str

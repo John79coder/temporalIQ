@@ -7,6 +7,7 @@ class TimestampMixin:
     created_at = db.Column(db.DateTime(timezone=True), default=TimeZone.utc_now)
     updated_at = db.Column(db.DateTime(timezone=True), default=TimeZone.utc_now, onupdate=TimeZone.utc_now)
 
+
 class TimeBlock(db.Model, TimestampMixin):
     __tablename__ = "time_blocks"
     id = db.Column(db.Integer, primary_key=True)
@@ -20,6 +21,7 @@ class TimeBlock(db.Model, TimestampMixin):
         db.Index('idx_time_block_calendar_id', 'calendar_id'),
         {'extend_existing': True}
     )
+
 
 class Task(db.Model, TimestampMixin):
     __tablename__ = "tasks"
@@ -37,6 +39,7 @@ class Task(db.Model, TimestampMixin):
         db.Index('idx_task_notion_db_id', 'notion_db_id'),
         {'extend_existing': True}
     )
+
 
 class TaskCompletion(db.Model):
     __tablename__ = 'task_completions'

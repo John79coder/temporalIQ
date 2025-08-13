@@ -1,18 +1,16 @@
 # app/notion/smart_mapping/field_detectors/field_type_heuristics.py
 import os
+from typing import List, Optional
 
+import pandas as pd
+import spacy
 from flask import current_app
 from sqlalchemy.orm.session import Session
 
+from app.features.services.service import FeaturesService
 from app.notion.smart_mapping.field_detectors.base import FieldDetector
 from app.notion.smart_mapping.models import FieldMatch
 from app.utils.exceptions import wrap_external_error, ServiceUnavailableError
-
-import spacy
-from typing import List, Optional
-import pandas as pd
-
-from app.features.services.service import FeaturesService
 
 
 class FieldTypeHeuristics(FieldDetector):
@@ -28,7 +26,8 @@ class FieldTypeHeuristics(FieldDetector):
         except Exception as e:
             raise wrap_external_error(e, ServiceUnavailableError, "Failed to load spaCy model")
 
-    def detect(self, fields: list[dict], rows: Optional[List[dict]] = None, db: Optional[Session] = None, user_id: Optional[int] = None) -> list[FieldMatch]:
+    def detect(self, fields: list[dict], rows: Optional[List[dict]] = None, db: Optional[Session] = None,
+               user_id: Optional[int] = None) -> list[FieldMatch]:
 
         user_ai_settings = self.features_service.get_settings(db, user_id)
         use_spacy = user_ai_settings.use_spacy_heuristics

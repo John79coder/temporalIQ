@@ -1,12 +1,12 @@
 # tests/auth/test_repositories.py
 from datetime import datetime, timezone, timedelta
+
 from app.auth.email_verification.repository import TokenRepository
-from app.auth.session_manager.repository import UserRepository
 from app.auth.models.entities import VerificationToken
+from app.auth.session_manager.repository import UserRepository
 
 
 def test_token_repository_create(db_session, test_user):
-
     user, _ = test_user
 
     token_repository = TokenRepository()
@@ -25,7 +25,6 @@ def test_token_repository_create(db_session, test_user):
 
 
 def test_user_repository_get_by_email(db_session, test_user):
-
     user, _ = test_user
 
     repo = UserRepository()
@@ -37,7 +36,6 @@ def test_user_repository_get_by_email(db_session, test_user):
 
 
 def test_user_repository_nonexistent_email(db_session):
-
     repo = UserRepository()
 
     result = repo.get_by_email(db_session, "nonexistent@example.com")

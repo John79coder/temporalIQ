@@ -1,18 +1,19 @@
 # app/auth/email_verification/service.py
-from datetime import timedelta
-import secrets
-from flask_mail import Message
-import smtplib
-from flask import current_app
-from app.auth.email_verification.repository import TokenRepository
-from app.utils.exceptions import ServiceUnavailableError, DatabaseError, wrap_external_error
-from pydantic import EmailStr, ValidationError, TypeAdapter
-from app.utils.exceptions import DataValidationError
-from app.utils.caching import ICacheService
-from app.utils.time_zone import TimeZone
 import logging
+import secrets
+import smtplib
+from datetime import timedelta
 
+from flask import current_app
+from flask_mail import Message
+from pydantic import EmailStr, ValidationError, TypeAdapter
+
+from app.auth.email_verification.repository import TokenRepository
 from app.extensions import mail
+from app.utils.caching import ICacheService
+from app.utils.exceptions import DataValidationError
+from app.utils.exceptions import ServiceUnavailableError, DatabaseError, wrap_external_error
+from app.utils.time_zone import TimeZone
 
 
 class EmailVerificationService:

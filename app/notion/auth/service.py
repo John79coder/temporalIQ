@@ -1,17 +1,20 @@
 # app/notion/auth/service.py
-import requests
+import logging
 from datetime import timedelta
-from sqlalchemy.orm import Session
+
+import requests
 from sqlalchemy.exc import SQLAlchemyError
-from app.utils.exceptions import NotionError, DatabaseError, wrap_external_error
-from app.utils.caching import ICacheService
+from sqlalchemy.orm import Session
+
 from app.notion.models.entities import NotionConnection
 from app.notion.models.schemas import NotionTokenIn
-from config import Config
 from app.notion.repositories.repository import NotionAuthRepository
-from app.utils.time_zone import TimeZone
+from app.utils.caching import ICacheService
 from app.utils.encryption import Encryptor
-import logging
+from app.utils.exceptions import NotionError, DatabaseError, wrap_external_error
+from app.utils.time_zone import TimeZone
+from config import Config
+
 
 class NotionAuthService:
     def __init__(self, repo: NotionAuthRepository, caching_service: ICacheService, encryptor: Encryptor):

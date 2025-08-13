@@ -1,17 +1,20 @@
 # app/notion/smart_mapping/field_detectors/string_similarity.py
 import os
+from typing import List
+
 import numpy as np
 import torch
+import torch.nn.functional as F
+from flask import current_app
 from sentence_transformers import SentenceTransformer
 from sentence_transformers.models import Transformer, Pooling
+from sqlalchemy.orm import Session
+
+from app.features.services.service import FeaturesService
 from app.notion.smart_mapping.field_detectors.base import FieldDetector
 from app.notion.smart_mapping.models import FieldMatch
 from app.utils.exceptions import wrap_external_error, ServiceUnavailableError
-import torch.nn.functional as F
-from typing import List
-from sqlalchemy.orm import Session
-from flask import current_app
-from app.features.services.service import FeaturesService
+
 
 class StringSimilarityMatcher(FieldDetector):
     target_fields = ["title", "due_date", "duration"]
@@ -32,7 +35,8 @@ class StringSimilarityMatcher(FieldDetector):
                 raise wrap_external_error(e, ServiceUnavailableError, "Failed to load embedding model")
         return self.model
 
-    def detect(self, fields: list[dict], rows: List[dict] = None, db: Session = None, user_id: int = None) -> list[FieldMatch]:
+    def detect(self, fields: list[dict], rows: List[dict] = None, db: Session = None, user_id: int = None) -> list[
+        FieldMatch]:
         user_ai_settings = self.features_service.get_settings(db, user_id)
         use_embedding_similarity = user_ai_settings.use_embedding_similarity
 

@@ -1,22 +1,23 @@
-import pytest
+from datetime import datetime
 
+import pytest
+from sqlalchemy.orm import Session
+
+from app.features.models.entities import UserAISettings
+from app.features.services.service import FeaturesService
 from app.notion.models.schemas import PartialCandidate
-from app.notion.smart_mapping.page_value_extractors.title_extractor import TitleExtractor
+from app.notion.smart_mapping.models import TaskCandidateData
+from app.notion.smart_mapping.notion_page_engine import NotionPageEngine
+from app.notion.smart_mapping.page_value_extractors.completion_extractor import CompletionExtractor
+from app.notion.smart_mapping.page_value_extractors.description_extractor import DescriptionExtractor
 from app.notion.smart_mapping.page_value_extractors.due_date_extractor import DueDateExtractor
 from app.notion.smart_mapping.page_value_extractors.duration_extractor import DurationExtractor
-from app.notion.smart_mapping.page_value_extractors.urgency_classifier import UrgencyClassifier
-from app.notion.smart_mapping.page_value_extractors.completion_extractor import CompletionExtractor
 from app.notion.smart_mapping.page_value_extractors.tag_extractor import TagExtractor
-from app.notion.smart_mapping.page_value_extractors.description_extractor import DescriptionExtractor
-from app.features.services.service import FeaturesService
-from app.features.models.entities import UserAISettings
-from app.notion.smart_mapping.notion_page_engine import NotionPageEngine
+from app.notion.smart_mapping.page_value_extractors.title_extractor import TitleExtractor
+from app.notion.smart_mapping.page_value_extractors.urgency_classifier import UrgencyClassifier
 from app.notion.smart_mapping.sectionizer import BlockSection
-from app.notion.smart_mapping.models import TaskCandidateData
-
-from sqlalchemy.orm import Session
-from datetime import datetime
 from app.utils.time_zone import TimeZone
+
 
 @pytest.fixture
 def mock_features_service():
@@ -29,9 +30,11 @@ def mock_features_service():
     )
     return mock
 
+
 @pytest.fixture
 def mock_db():
     return MagicMock(spec=Session)
+
 
 @pytest.fixture
 def mock_section_blocks():
@@ -39,6 +42,7 @@ def mock_section_blocks():
         {'type': 'heading_1', 'text': [{'plain_text': 'Test Title'}]},
         {'type': 'paragraph', 'text': [{'plain_text': 'Description text'}]},
     ]
+
 
 # --- Unit Tests for Value Extractors ---
 
@@ -49,6 +53,7 @@ def test_title_extractor_with_spacy(mock_features_service, mock_db, mock_section
     assert "Test Title" in partial.title or partial.title == "Test Title Description text"[:50]  # Depending on POS
     assert partial.confidence == 0.8
 
+
 def test_title_extractor_without_spacy(mock_features_service, mock_db, mock_section_blocks):
     mock_features_service.get_settings.return_value.use_spacy_heuristics = False
     extractor = TitleExtractor(mock_features_service)
@@ -56,12 +61,14 @@ def test_title_extractor_without_spacy(mock_features_service, mock_db, mock_sect
     assert partial.title == "Test Title Description text"[:50] or "Untitled"
     assert partial.confidence == 0.5
 
+
 def test_due_date_extractor(mock_features_service, mock_db):
     blocks = [{'type': 'paragraph', 'text': [{'plain_text': 'due 2025-07-28'}]}]
     extractor = DueDateExtractor(mock_features_service)
     partial = extractor.extract(blocks, mock_db, 1)
     assert partial.due_date == datetime(2025, 7, 28, tzinfo=TimeZone.utc_now().tzinfo)  # UTC
     assert partial.confidence == 0.8
+
 
 def test_due_date_extractor_no_date(mock_features_service, mock_db, mock_section_blocks):
     extractor = DueDateExtractor(mock_features_service)
@@ -96,6 +103,7 @@ def test_priority_extractor_with_embeddings(mock_sentence_transformer_class, moc
     assert partial.priority == "high"
     assert partial.confidence > 0.5
 
+
 def test_priority_extractor_without_embeddings(mock_features_service, mock_db):
     mock_features_service.get_settings.return_value.use_embedding_similarity = False
     blocks = [{'type': 'paragraph', 'text': [{'plain_text': 'medium task'}]}]
@@ -104,6 +112,7 @@ def test_priority_extractor_without_embeddings(mock_features_service, mock_db):
     assert partial.priority == "medium"
     assert partial.confidence == 0.7
 
+
 def test_duration_extractor(mock_features_service, mock_db):
     blocks = [{'type': 'paragraph', 'text': [{'plain_text': '2 hour task'}]}]
     extractor = DurationExtractor(mock_features_service)
@@ -111,11 +120,13 @@ def test_duration_extractor(mock_features_service, mock_db):
     assert partial.duration == 120
     assert partial.confidence == 0.8
 
+
 def test_duration_extractor_no_duration(mock_features_service, mock_db, mock_section_blocks):
     extractor = DurationExtractor(mock_features_service)
     partial = extractor.extract(mock_section_blocks, mock_db, 1)
     assert partial.duration is None
     assert partial.confidence == 0.5
+
 
 @patch("app.notion.smart_mapping.page_value_extractors.urgency_classifier.pipeline")
 def test_urgency_classifier_with_nlp(mock_pipeline, mock_features_service, mock_db):
@@ -131,11 +142,13 @@ def test_urgency_classifier_with_nlp(mock_pipeline, mock_features_service, mock_
     assert partial.urgency > 0.75
     assert partial.confidence > 0.5
 
+
 def test_urgency_classifier_without_nlp(mock_features_service, mock_db, mock_section_blocks):
     mock_features_service.get_settings.return_value.use_nlp_urgency = False
     extractor = UrgencyClassifier(mock_features_service)
     partial = extractor.extract(mock_section_blocks, mock_db, 1)
     assert partial.confidence == 0.5
+
 
 def test_completion_extractor_done(mock_features_service, mock_db):
     blocks = [{'type': 'paragraph', 'text': [{'plain_text': 'completed task'}]}]
@@ -144,11 +157,13 @@ def test_completion_extractor_done(mock_features_service, mock_db):
     assert partial.status == "done"
     assert partial.confidence == 0.7
 
+
 def test_completion_extractor_todo(mock_features_service, mock_db, mock_section_blocks):
     extractor = CompletionExtractor(mock_features_service)
     partial = extractor.extract(mock_section_blocks, mock_db, 1)
     assert partial.status == "todo"
     assert partial.confidence == 0.7
+
 
 def test_tag_extractor_with_spacy(mock_features_service, mock_db):
     blocks = [{'type': 'paragraph', 'text': [{'plain_text': 'Microsoft product'}]}]
@@ -156,6 +171,7 @@ def test_tag_extractor_with_spacy(mock_features_service, mock_db):
     partial = extractor.extract(blocks, mock_db, 1)
     assert "Microsoft" in partial.tags or partial.tags == []
     assert partial.confidence >= 0.5
+
 
 def test_tag_extractor_without_spacy(mock_features_service, mock_db):
     mock_features_service.get_settings.return_value.use_spacy_heuristics = False
@@ -165,6 +181,7 @@ def test_tag_extractor_without_spacy(mock_features_service, mock_db):
     assert partial.tags == ['tag1', 'tag2']
     assert partial.confidence == 0.7
 
+
 def test_description_extractor_with_spacy(mock_features_service, mock_db):
     blocks = [{'type': 'paragraph', 'text': [{'plain_text': 'This is a test description. Sentence two.'}]}]
     extractor = DescriptionExtractor(mock_features_service)
@@ -172,12 +189,14 @@ def test_description_extractor_with_spacy(mock_features_service, mock_db):
     assert "test description" in partial.description if hasattr(partial, 'description') else True  # If extended
     assert partial.confidence == 0.8
 
+
 def test_description_extractor_without_spacy(mock_features_service, mock_db, mock_section_blocks):
     mock_features_service.get_settings.return_value.use_spacy_heuristics = False
     extractor = DescriptionExtractor(mock_features_service)
     partial = extractor.extract(mock_section_blocks, mock_db, 1)
     assert partial.description.strip() == "Description text"
     assert partial.confidence == 0.6
+
 
 # --- Unit Tests for PageTaskExtractionEngine ---
 
@@ -214,10 +233,10 @@ def mock_engine(mock_features_service):
 @patch("app.notion.smart_mapping.page_value_extractors.duration_extractor.DurationExtractor")
 @patch("app.notion.smart_mapping.page_value_extractors.priority_extractor.PriorityExtractor")
 def test_page_task_extraction_engine_generate_candidates(
-    MockPriority, MockDuration, MockDueDate, MockDescription, MockTag,
-    MockCompletion, mock_pipeline, MockTitle,  # Reordered for clarity
-    mock_aggregate, mock_current_app,  # New: Use mock_aggregate
-    mock_features_service, mock_db
+        MockPriority, MockDuration, MockDueDate, MockDescription, MockTag,
+        MockCompletion, mock_pipeline, MockTitle,  # Reordered for clarity
+        mock_aggregate, mock_current_app,  # New: Use mock_aggregate
+        mock_features_service, mock_db
 ):
     mock_app_context = MagicMock()
     mock_current_app._get_current_object.return_value.app_context.return_value.__enter__.return_value = mock_app_context
@@ -268,8 +287,6 @@ def test_page_task_extraction_engine_ai_off(mock_engine, mock_db):
     assert candidates == []
 
 
-
-
 @patch("app.notion.smart_mapping.notion_page_engine.current_app")
 @patch("app.notion.smart_mapping.notion_page_engine.FieldDetectorAggregator")
 def test_page_task_extraction_engine_multi_task(MockFieldDetectorAggregator, mock_current_app, mock_db):
@@ -296,8 +313,10 @@ def test_page_task_extraction_engine_multi_task(MockFieldDetectorAggregator, moc
     ]
     engine.aggregator = MagicMock()
     engine.aggregator.aggregate.return_value = [
-        TaskCandidateData(user_id=1, notion_db_id="test_db", title="Task A", confidence=0.7, issues=[], duration=None, due_date=None),
-        TaskCandidateData(user_id=1, notion_db_id="test_db", title="Task B", confidence=0.7, issues=[], duration=None, due_date=None),
+        TaskCandidateData(user_id=1, notion_db_id="test_db", title="Task A", confidence=0.7, issues=[], duration=None,
+                          due_date=None),
+        TaskCandidateData(user_id=1, notion_db_id="test_db", title="Task B", confidence=0.7, issues=[], duration=None,
+                          due_date=None),
     ]
     # ✅ Fixed line
     engine.aggregator.merge_candidates_if_single = MagicMock(side_effect=lambda x, _: x)

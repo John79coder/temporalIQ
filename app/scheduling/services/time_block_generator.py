@@ -1,27 +1,28 @@
 # app/scheduling/services/time_block_generator.py
 import os
-from typing import List, Tuple, Optional
-from datetime import datetime, timedelta
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError
-from app.utils.caching import ICacheService
-from app.scheduling.models.entities import Task, TimeBlock
-from app.notion.repositories.repository import TaskCandidateRepository
-from app.scheduling.services.interfaces import ITimeBlockGenerator
-from app.scheduling.services.free_time_finder import IFreeTimeFinder
-from app.scheduling.services.task_prioritizer import ITaskPrioritizer
-from app.scheduling.models.policies import SchedulingPolicy
-from app.features.services.service import FeaturesService
-from app.features.services.ai_data_service import AIDataService
-from app.features.models.entities import AITrainingEvent, UserAISettings
-from app.utils.exceptions import DatabaseError, wrap_external_error
-from app.utils.logging_service import LoggingService
-from app.features.models.schemas import UrgencyFeedbackInput, UrgencyFeedbackLabel
-from flask import g, current_app
 import re
+from datetime import datetime, timedelta
+from typing import List, Tuple, Optional
+
+from flask import g, current_app
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
 from transformers import pipeline
 
+from app.features.models.entities import AITrainingEvent, UserAISettings
+from app.features.models.schemas import UrgencyFeedbackInput, UrgencyFeedbackLabel
+from app.features.services.ai_data_service import AIDataService
+from app.features.services.service import FeaturesService
+from app.notion.repositories.repository import TaskCandidateRepository
 from app.notion.smart_mapping.models import TaskCandidateData
+from app.scheduling.models.entities import Task, TimeBlock
+from app.scheduling.models.policies import SchedulingPolicy
+from app.scheduling.services.free_time_finder import IFreeTimeFinder
+from app.scheduling.services.interfaces import ITimeBlockGenerator
+from app.scheduling.services.task_prioritizer import ITaskPrioritizer
+from app.utils.caching import ICacheService
+from app.utils.exceptions import DatabaseError, wrap_external_error
+from app.utils.logging_service import LoggingService
 
 
 class TimeBlockGenerator(ITimeBlockGenerator):

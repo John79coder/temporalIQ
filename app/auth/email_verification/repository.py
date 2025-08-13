@@ -1,12 +1,14 @@
 # app/auth/email_verification/repository.py
 import logging
+from datetime import datetime
 
 from sqlalchemy.orm import Session
-from datetime import datetime
+
 from app.auth.models.entities import VerificationToken
-from app.utils.exceptions import DatabaseError, wrap_external_error
 from app.repositories.base import AbstractRepository
+from app.utils.exceptions import DatabaseError, wrap_external_error
 from app.utils.time_zone import TimeZone
+
 
 class TokenRepository(AbstractRepository):
     def create(self, db: Session, user_id: int, token: str, expires_at: datetime) -> VerificationToken:
@@ -19,7 +21,7 @@ class TokenRepository(AbstractRepository):
         try:
             now = TimeZone.utc_now()
             return db.query(VerificationToken).filter(VerificationToken.token == token,
-                                                     VerificationToken.expires_at > now).first()
+                                                      VerificationToken.expires_at > now).first()
         except Exception as e:
             raise wrap_external_error(e, DatabaseError, "Failed to validate token")
 

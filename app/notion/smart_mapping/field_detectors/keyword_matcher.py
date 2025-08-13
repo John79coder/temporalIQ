@@ -1,7 +1,10 @@
+from typing import List, Optional
+
+from sqlalchemy.orm import Session
+
 from app.notion.smart_mapping.field_detectors.base import FieldDetector
 from app.notion.smart_mapping.models import FieldMatch
-from typing import List, Optional
-from sqlalchemy.orm import Session
+
 
 class KeywordMatcher(FieldDetector):
     keywords = {
@@ -40,7 +43,8 @@ class KeywordMatcher(FieldDetector):
         ]
     }
 
-    def detect(self, fields: list[dict], rows: Optional[List[dict]] = None, db: Optional[Session] = None, user_id: Optional[int] = None) -> list[FieldMatch]:
+    def detect(self, fields: list[dict], rows: Optional[List[dict]] = None, db: Optional[Session] = None,
+               user_id: Optional[int] = None) -> list[FieldMatch]:
         matches = []
         for field in fields:
             name = field["name"].lower()

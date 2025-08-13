@@ -1,12 +1,12 @@
 # tests/notion/test_repositories.py
-from app.notion.mapping_storage.repository import MappingRepository
-from app.notion.repositories.repository import TaskCandidateRepository, NotionAuthRepository
-from app.notion.models.entities import NotionConnection, FieldMapping, TaskCandidate
 from datetime import datetime, timezone
+
+from app.notion.mapping_storage.repository import MappingRepository
+from app.notion.models.entities import NotionConnection, FieldMapping, TaskCandidate
+from app.notion.repositories.repository import TaskCandidateRepository, NotionAuthRepository
 
 
 def test_notion_auth_repository_save_connection(db_session, test_user):
-
     user, _ = test_user
 
     notion_auth_repository = NotionAuthRepository()
@@ -29,7 +29,6 @@ def test_notion_auth_repository_save_connection(db_session, test_user):
 
 
 def test_mapping_repository_save(db_session, test_user):
-
     user, _ = test_user
 
     mapping_repository = MappingRepository()
@@ -52,7 +51,6 @@ def test_mapping_repository_save(db_session, test_user):
 
 
 def test_task_candidate_repository_save(db_session, test_user):
-
     user, _ = test_user
 
     task_candidate_repository = TaskCandidateRepository()
@@ -66,8 +64,8 @@ def test_task_candidate_repository_save(db_session, test_user):
     assert retrieved_candidate.title == "Test Task"
     assert retrieved_candidate.confidence == 0.9
 
-def test_task_candidate_repository_get(db_session, test_user):
 
+def test_task_candidate_repository_get(db_session, test_user):
     user, _ = test_user
 
     task_candidate_factory = TaskCandidateRepository()

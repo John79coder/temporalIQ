@@ -2,15 +2,17 @@
 from datetime import datetime
 from typing import Optional
 
-from sqlalchemy.orm import Session
-from app.subscriptions.repositories.repository import SubscriptionsRepository
-from app.subscriptions.models.entities import UserSubscriptions
-from app.utils.exceptions import DatabaseError, wrap_external_error
-from app.utils.caching import ICacheService
-from app.utils.time_zone import TimeZone
-from app.subscriptions.models.schemas import SubscriptionCreate, SubscriptionOut, SubscriptionUpdate
 import stripe
 from flask import current_app
+from sqlalchemy.orm import Session
+
+from app.subscriptions.models.entities import UserSubscriptions
+from app.subscriptions.models.schemas import SubscriptionCreate, SubscriptionOut, SubscriptionUpdate
+from app.subscriptions.repositories.repository import SubscriptionsRepository
+from app.utils.caching import ICacheService
+from app.utils.exceptions import DatabaseError, wrap_external_error
+from app.utils.time_zone import TimeZone
+
 
 class SubscriptionsService:
     def __init__(self, repo: SubscriptionsRepository, caching_service: ICacheService):
@@ -144,7 +146,8 @@ class SubscriptionsService:
             if sub:
                 sub.plan_type = subscription['items']['data'][0]['plan']['id']  # Assume single item
                 sub.status = subscription['status']
-                sub.end_date = datetime.fromtimestamp(subscription['current_period_end']) if subscription['cancel_at_period_end'] else None
+                sub.end_date = datetime.fromtimestamp(subscription['current_period_end']) if subscription[
+                    'cancel_at_period_end'] else None
                 self.subscriptions_repo.create_or_update(db, sub)
         elif event["type"] == "customer.subscription.deleted":
             subscription_id = event['data']['object']['id']

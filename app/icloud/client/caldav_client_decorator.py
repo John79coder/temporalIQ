@@ -1,13 +1,16 @@
 # app/icloud/client/caldav_client_decorator.py
+import logging
+import zoneinfo
 from datetime import datetime
 from typing import List
+
+from icalendar import Calendar as iCalendar, Timezone as iTimezone
 from icalendar.cal import Calendar
+
 from app.icloud.client.interfaces import ICalendarClient
 from app.icloud.models.schemas import CalendarEvent, CalendarMetadata, EventWriteRequest
 from app.utils.time_zone import TimeZone
-from icalendar import Calendar as iCalendar, Timezone as iTimezone
-import zoneinfo
-import logging
+
 
 class CalDAVClientDecorator(ICalendarClient):
     def __init__(self, client: ICalendarClient):

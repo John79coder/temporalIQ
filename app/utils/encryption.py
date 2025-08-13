@@ -1,10 +1,13 @@
 # app/utils/encryption.py
-from cryptography.fernet import Fernet, InvalidToken
+import logging
 import os
+
+from cryptography.fernet import Fernet, InvalidToken
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
+
 from app.utils.exceptions import ServiceUnavailableError, wrap_external_error
 from config import Config, TestingConfig
-from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
-import logging
+
 
 class Encryptor:
     def __init__(self):

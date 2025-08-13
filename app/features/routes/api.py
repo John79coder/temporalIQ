@@ -1,8 +1,9 @@
 from flask import Blueprint, request, jsonify, g, current_app
 from pydantic import ValidationError as PydanticValidationError
+
+from app.features.models.schemas import AISettingsUpdate, AISettingsOut
 from app.utils.endpoint_utils import verify_jwt, csrf_protected
 from app.utils.exceptions import DataValidationError, DatabaseError, make_handled_error_response
-from app.features.models.schemas import AISettingsUpdate, AISettingsOut
 
 bp = Blueprint("features", __name__, url_prefix="/features")
 

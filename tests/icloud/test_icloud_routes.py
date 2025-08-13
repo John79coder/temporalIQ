@@ -1,11 +1,14 @@
 # tests/icloud/test_routes.py
 import uuid
-from unittest.mock import patch, MagicMock
-from flask import g
-from app.icloud.models.entities import iCloudConnection
-from app.auth.models.entities import User
 from datetime import datetime, timezone
+from unittest.mock import patch, MagicMock
+
+from flask import g
+
+from app.auth.models.entities import User
+from app.icloud.models.entities import iCloudConnection
 from app.utils.encryption import Encryptor
+
 
 def test_connect_icloud_success(authorized_client, db_session, app, test_user, caching_service):
     _, user_id = test_user
@@ -22,6 +25,7 @@ def test_connect_icloud_success(authorized_client, db_session, app, test_user, c
         assert conn is not None
         assert conn.encrypted_app_password is not None
 
+
 def test_connect_icloud_invalid_data(authorized_client, db_session, app, test_user):
     _, user_id = test_user
     with app.app_context():
@@ -33,11 +37,13 @@ def test_connect_icloud_invalid_data(authorized_client, db_session, app, test_us
         assert response.status_code == 400
         assert "error" in response.json["detail"]
 
+
 @patch('app.utils.caching.InMemoryCacheService.set')
 @patch('app.utils.encryption.Encryptor.decrypt')
 @patch('caldav.DAVClient')
 @patch('app.auth.models.entities.User')
-def test_list_calendars_success(mock_user, mock_dav_client, mock_decrypt, mock_cache_set, authorized_client, db_session, app, test_user):
+def test_list_calendars_success(mock_user, mock_dav_client, mock_decrypt, mock_cache_set, authorized_client, db_session,
+                                app, test_user):
     user, user_id = test_user
     mock_decrypt.return_value = 'valid_app_password'
     mock_cache_set.return_value = None
@@ -71,6 +77,7 @@ def test_list_calendars_success(mock_user, mock_dav_client, mock_decrypt, mock_c
         )
         mock_dav_instance.principal.return_value.calendars.assert_called_once()
 
+
 def test_list_calendars_no_connection(authorized_client, db_session, app, test_user):
     _, user_id = test_user
     with app.app_context():
@@ -80,12 +87,14 @@ def test_list_calendars_no_connection(authorized_client, db_session, app, test_u
         assert response.status_code == 500
         assert "No iCloud connection" in response.json["detail"]
 
+
 @patch('app.utils.caching.InMemoryCacheService.set')
 @patch('app.utils.encryption.Encryptor.decrypt')
 @patch('caldav.DAVClient')
 @patch('app.auth.models.entities.User')
 @patch('app.icloud.client.caldav_client_decorator.CalDAVClientDecorator._extract_calendar_timezone')
-def test_get_events_success(mock_get_calendar, mock_user, mock_dav_client, mock_decrypt, mock_cache_set, authorized_client, db_session, app, test_user):
+def test_get_events_success(mock_get_calendar, mock_user, mock_dav_client, mock_decrypt, mock_cache_set,
+                            authorized_client, db_session, app, test_user):
     _, user_id = test_user
     mock_get_calendar.return_value = "UTC"
     mock_decrypt.return_value = 'valid_app_password'
@@ -124,11 +133,13 @@ def test_get_events_success(mock_get_calendar, mock_user, mock_dav_client, mock_
         assert len(response.json["events"]) == 1
         assert response.json["events"][0]["summary"] == "Event"
 
+
 @patch('app.utils.caching.InMemoryCacheService.set')
 @patch('app.utils.encryption.Encryptor.decrypt')
 @patch('caldav.DAVClient')
 @patch('app.auth.models.entities.User')
-def test_get_events_invalid_parameters(mock_user, mock_dav_client, mock_decrypt, mock_cache_set, authorized_client, db_session, app, test_user):
+def test_get_events_invalid_parameters(mock_user, mock_dav_client, mock_decrypt, mock_cache_set, authorized_client,
+                                       db_session, app, test_user):
     user, user_id = test_user
     mock_decrypt.return_value = 'valid_app_password'
     mock_cache_set.return_value = None
@@ -144,11 +155,13 @@ def test_get_events_invalid_parameters(mock_user, mock_dav_client, mock_decrypt,
         assert response.status_code == 400
         assert "Missing required parameters" in response.json["detail"]
 
+
 @patch('app.utils.caching.InMemoryCacheService.set')
 @patch('app.utils.encryption.Encryptor.decrypt')
 @patch('caldav.DAVClient')
 @patch('app.auth.models.entities.User')
-def test_create_event_success(mock_user, mock_dav_client, mock_decrypt, mock_cache_set, authorized_client, db_session, app, test_user):
+def test_create_event_success(mock_user, mock_dav_client, mock_decrypt, mock_cache_set, authorized_client, db_session,
+                              app, test_user):
     _, user_id = test_user
     mock_decrypt.return_value = 'valid_app_password'
     mock_cache_set.return_value = None
@@ -173,9 +186,11 @@ def test_create_event_success(mock_user, mock_dav_client, mock_decrypt, mock_cac
                 "end": "2023-10-10T11:00:00Z"
             }
         }
-        response = authorized_client.post("/icloud/events", json=event, headers={"X-CSRF-Token": authorized_client.csrf_token})
+        response = authorized_client.post("/icloud/events", json=event,
+                                          headers={"X-CSRF-Token": authorized_client.csrf_token})
         assert response.status_code == 200
         assert response.json["message"] == "Event written to iCloud."
+
 
 def test_create_event_no_connection(authorized_client, db_session, app, test_user):
     _, user_id = test_user
@@ -190,10 +205,12 @@ def test_create_event_no_connection(authorized_client, db_session, app, test_use
                 "end": "2023-10-10T11:00:00Z"
             }
         }
-        response = authorized_client.post("/icloud/events", json=event, headers={"X-CSRF-Token": authorized_client.csrf_token})
+        response = authorized_client.post("/icloud/events", json=event,
+                                          headers={"X-CSRF-Token": authorized_client.csrf_token})
         assert response.status_code == 500
         assert isinstance(response.json, dict)
         assert "No iCloud connection" in response.json["detail"]
+
 
 @patch('app.utils.caching.InMemoryCacheService.set')
 @patch('app.utils.encryption.Encryptor.encrypt')
@@ -214,6 +231,7 @@ def test_update_icloud_connection_success(mock_encrypt, mock_cache_set, authoriz
         conn = db_session.query(iCloudConnection).filter_by(user_id=user_id).first()
         assert conn.encrypted_app_password != "old-encrypted"
 
+
 def test_update_icloud_connection_no_connection(authorized_client, db_session, app, test_user):
     _, user_id = test_user
     with app.app_context():
@@ -225,11 +243,13 @@ def test_update_icloud_connection_no_connection(authorized_client, db_session, a
         assert response.status_code == 500
         assert "No iCloud connection" in response.json["detail"]
 
+
 @patch('app.utils.caching.InMemoryCacheService.set')
 @patch('app.utils.encryption.Encryptor.decrypt')
 @patch('caldav.DAVClient')
 @patch('app.auth.models.entities.User')
-def test_get_available_time_blocks_success(mock_user, mock_dav_client, mock_decrypt, mock_cache_set, authorized_client, db_session, app, test_user):
+def test_get_available_time_blocks_success(mock_user, mock_dav_client, mock_decrypt, mock_cache_set, authorized_client,
+                                           db_session, app, test_user):
     _, user_id = test_user
     mock_decrypt.return_value = 'valid_app_password'
     mock_cache_set.return_value = None
@@ -253,11 +273,13 @@ def test_get_available_time_blocks_success(mock_user, mock_dav_client, mock_decr
         assert response.status_code == 200
         assert len(response.json["time_blocks"]) > 0
 
+
 @patch('app.utils.caching.InMemoryCacheService.set')
 @patch('app.utils.encryption.Encryptor.decrypt')
 @patch('caldav.DAVClient')
 @patch('app.auth.models.entities.User')
-def test_get_available_time_blocks_invalid_time(mock_user, mock_dav_client, mock_decrypt, mock_cache_set, authorized_client, db_session, app, test_user):
+def test_get_available_time_blocks_invalid_time(mock_user, mock_dav_client, mock_decrypt, mock_cache_set,
+                                                authorized_client, db_session, app, test_user):
     user, user_id = test_user
     mock_decrypt.return_value = 'valid_app_password'
     mock_cache_set.return_value = None
@@ -276,10 +298,12 @@ def test_get_available_time_blocks_invalid_time(mock_user, mock_dav_client, mock
         assert response.status_code == 400
         assert "earliest_time must be before latest_time" in response.json["detail"]
 
+
 @patch('app.utils.caching.InMemoryCacheService.set')
 @patch('caldav.DAVClient')
 @patch('app.auth.models.entities.User')
-def test_schedule_blocks_success(mock_user, mock_dav_client, mock_cache_set, authorized_client, db_session, app, test_user):
+def test_schedule_blocks_success(mock_user, mock_dav_client, mock_cache_set, authorized_client, db_session, app,
+                                 test_user):
     _, user_id = test_user
     encryptor = Encryptor()
     valid_encrypted_password = encryptor.encrypt("valid_app_password")
@@ -308,6 +332,7 @@ def test_schedule_blocks_success(mock_user, mock_dav_client, mock_cache_set, aut
         }, headers={"X-CSRF-Token": authorized_client.csrf_token})
         assert response.status_code == 200
         assert response.json["message"] == "Events written to iCloud."
+
 
 def test_schedule_blocks_invalid_events(authorized_client, db_session, app, test_user):
     _, user_id = test_user

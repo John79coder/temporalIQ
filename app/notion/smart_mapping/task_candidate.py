@@ -1,15 +1,13 @@
 # notion/smart_mapping/task_candidate.py
-from typing import List, Optional
 from collections import defaultdict
-from zoneinfo import ZoneInfo
+from datetime import datetime
+from typing import List, Optional
 
 from sqlalchemy.orm.session import Session
 
 from app.notion.models.entities import FieldMapping
 from app.notion.smart_mapping.models import FieldMatch, TaskCandidateData
 from app.utils.time_zone import TimeZone
-
-from datetime import datetime, timezone
 
 
 class TaskCandidateBuilder:
@@ -36,7 +34,8 @@ class TaskCandidateBuilder:
             issues.append(f"Failed to parse due_date: {str(e)}")
             return None
 
-    def build_from_row(self, db: Session, matches: List[FieldMatch], row: dict, mapping: FieldMapping, user_id: int = None,
+    def build_from_row(self, db: Session, matches: List[FieldMatch], row: dict, mapping: FieldMapping,
+                       user_id: int = None,
                        notion_db_id: str = None) -> TaskCandidateData:
         issues = []
         alternatives = {}

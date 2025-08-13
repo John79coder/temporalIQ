@@ -1,30 +1,31 @@
 # app/auth/session_manager/service.py
+import base64
 import logging
 import pickle
 import secrets
+import smtplib
 from datetime import timedelta
 from io import BytesIO
-
-from flask import current_app
-from sqlalchemy.orm.session import Session
-from app.auth.session_manager.repository import UserRepository
-import jwt
-
-from app.utils.security import pwd_context
-from config import Config
-from app.utils.caching import ICacheService
-from app.utils.time_zone import TimeZone
-from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
-import requests
 from typing import Optional
-from app.utils.exceptions import AuthError, DatabaseError, wrap_external_error, ServiceUnavailableError
-from app.auth.models.entities import User
-from app.features.services.service import FeaturesService
+
+import jwt
 import pyotp
 import qrcode
-import base64
+import requests
+from flask import current_app
 from flask_mail import Message
-import smtplib
+from sqlalchemy.orm.session import Session
+from tenacity import retry, stop_after_attempt, wait_fixed, retry_if_exception_type
+
+from app.auth.models.entities import User
+from app.auth.session_manager.repository import UserRepository
+from app.features.services.service import FeaturesService
+from app.utils.caching import ICacheService
+from app.utils.exceptions import AuthError, DatabaseError, wrap_external_error, ServiceUnavailableError
+from app.utils.security import pwd_context
+from app.utils.time_zone import TimeZone
+from config import Config
+
 
 class AuthenticationService:
     def __init__(self, user_repo: UserRepository, caching_service: ICacheService, features_service: FeaturesService):
@@ -213,7 +214,6 @@ class AuthenticationService:
         qr_base64 = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
 
         return {"qr_base64": qr_base64, "secret": secret, "backup_codes": backup_codes}
-
 
     def verify_2fa_code(self, db: Session, user_id: int, code: str):
         user = self.user_repo.get_by_id(db, user_id)

@@ -1,12 +1,12 @@
 # app/user_preferences/preferences_store/service.py
-from app.user_preferences.models.entities import UserPreferences
-from app.user_preferences.models.schemas import PreferencesCreate
-from app.utils.exceptions import DatabaseError, wrap_external_error
-from app.utils.caching import ICacheService
 import logging
 
+from app.user_preferences.models.entities import UserPreferences
+from app.user_preferences.models.schemas import PreferencesCreate
 from app.user_preferences.preferences_store.interfaces import IPreferencesService
 from app.user_preferences.preferences_store.repository import PreferencesRepository
+from app.utils.caching import ICacheService
+from app.utils.exceptions import DatabaseError, wrap_external_error
 
 
 class PreferencesService(IPreferencesService):

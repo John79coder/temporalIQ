@@ -1,15 +1,16 @@
 # tests/auth/test_models.py
 from datetime import datetime, timedelta, timezone
-from app.auth.models.entities import VerificationToken
+
 import pytest
 from sqlalchemy.exc import IntegrityError
+
 from app.auth.models.entities import User
+from app.auth.models.entities import VerificationToken
 from app.utils.exceptions import AuthError
 from tests.conftest import PASSWORD_CONTEXT
 
 
 def test_user_model_creation(db_session):
-
     user = User(
         email="test@example.com",
         hashed_password=PASSWORD_CONTEXT.hash("Secure123!"),
@@ -24,6 +25,7 @@ def test_user_model_creation(db_session):
     assert user.hashed_password is not None
     assert user.created_at is not None
     assert user.is_verified is False
+
 
 def test_verification_token_expiration(db_session, test_user):
     user, _ = test_user
@@ -43,7 +45,6 @@ def test_verification_token_expiration(db_session, test_user):
 
 
 def test_user_model_invalid_email(db_session):
-
     user = User(
         email="invalid-email",
         hashed_password=PASSWORD_CONTEXT.hash("Secure123!")
@@ -56,7 +57,6 @@ def test_user_model_invalid_email(db_session):
 
 
 def test_verification_token_missing_user(db_session):
-
     verification_token = VerificationToken(
         token="test-token",
         expires_at=datetime.now(timezone.utc) + timedelta(hours=1)

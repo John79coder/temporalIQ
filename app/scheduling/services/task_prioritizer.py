@@ -1,31 +1,34 @@
 # app/scheduling/services/task_prioritizer.py
-from typing import List
-from sqlalchemy.orm import Session
-from sqlalchemy.exc import SQLAlchemyError
-from app.utils.caching import ICacheService
-from app.scheduling.models.entities import Task
-from app.scheduling.services.interfaces import ITaskPrioritizer
-from app.utils.time_zone import TimeZone
-from app.utils.exceptions import DataValidationError, wrap_external_error, DatabaseError
-from app.user_preferences.preferences_store.service import PreferencesService
-from app.features.services.service import FeaturesService
-from app.features.services.ai_data_service import AIDataService
-from app.features.models.entities import AITrainingEvent
-from app.utils.logging_service import LoggingService
-from app.features.models.schemas import SlotChoiceInput, SlotChoiceLabel
-import numpy as np
-import joblib
 import os
+from typing import List
+
+import joblib
+import numpy as np
 from flask import current_app
-from tenacity import retry, stop_after_attempt, wait_exponential
 from sklearn.linear_model import Ridge
 from sklearn.model_selection import cross_val_score
+from sqlalchemy.exc import SQLAlchemyError
+from sqlalchemy.orm import Session
+from tenacity import retry, stop_after_attempt, wait_exponential
 
+from app.features.models.entities import AITrainingEvent
+from app.features.models.schemas import SlotChoiceInput, SlotChoiceLabel
+from app.features.services.ai_data_service import AIDataService
+from app.features.services.service import FeaturesService
+from app.scheduling.models.entities import Task
 from app.scheduling.models.policies import get_urgency_float, PRIORITY_TO_WEIGHT  # NEW: Import mappings
+from app.scheduling.services.interfaces import ITaskPrioritizer
+from app.user_preferences.preferences_store.service import PreferencesService
+from app.utils.caching import ICacheService
+from app.utils.exceptions import DataValidationError, wrap_external_error, DatabaseError
+from app.utils.logging_service import LoggingService
+from app.utils.time_zone import TimeZone
 
 
 class TaskPrioritizer(ITaskPrioritizer):
-    def __init__(self, caching_service: ICacheService, features_service: FeaturesService, preferences_service: PreferencesService, ai_data_service: AIDataService, logging_service: LoggingService):
+    def __init__(self, caching_service: ICacheService, features_service: FeaturesService,
+                 preferences_service: PreferencesService, ai_data_service: AIDataService,
+                 logging_service: LoggingService):
         self.caching_service = caching_service
         self.features_service = features_service
         self.preferences_service = preferences_service
@@ -71,7 +74,8 @@ class TaskPrioritizer(ITaskPrioritizer):
 
             events = self._fetch_slot_choices(db, user_id, scope)
             if len(events) < 100:
-                self.logging_service.info("Insufficient data for Ridge training, using fallback", user_id=user_id, extra={"event_count": len(events)})
+                self.logging_service.info("Insufficient data for Ridge training, using fallback", user_id=user_id,
+                                          extra={"event_count": len(events)})
                 return False
 
             features, labels = [], []
@@ -100,7 +104,8 @@ class TaskPrioritizer(ITaskPrioritizer):
                 except Exception as e:
                     self.logging_service.error("Failed to save Ridge model", user_id=user_id, extra={"error": str(e)})
                     return False
-            self.logging_service.info("Ridge model cross-validation accuracy too low, using fallback", user_id=user_id, extra={"cv_mean": mean_cv_acc})
+            self.logging_service.info("Ridge model cross-validation accuracy too low, using fallback", user_id=user_id,
+                                      extra={"cv_mean": mean_cv_acc})
             return False
         except SQLAlchemyError as e:
             self.logging_service.error("Database error during model training", user_id=user_id, extra={"error": str(e)})
@@ -136,18 +141,22 @@ class TaskPrioritizer(ITaskPrioritizer):
                         due_date = TimeZone.to_utc(task.due_date, user_time_zone)
                         due_date_score = max(0, 1 / (due_date.timestamp() - TimeZone.utc_now().timestamp() + 1))
                     except ValueError as e:
-                        self.logging_service.error("Invalid due_date for task", user_id=user_id, task_id=task.id, extra={"error": str(e)})
+                        self.logging_service.error("Invalid due_date for task", user_id=user_id, task_id=task.id,
+                                                   extra={"error": str(e)})
                 if use_ml:
                     try:
-                        urgency_float = get_urgency_float(task.urgency or task.priority)  # CHANGED: Prefer task.urgency float if set, else convert priority
+                        urgency_float = get_urgency_float(
+                            task.urgency or task.priority)  # CHANGED: Prefer task.urgency float if set, else convert priority
                         features = np.array([[task.duration or 30, priority_score, due_date_score]])
                         ml_score = self.ridge_model.predict(features)[0]
                         return (-ml_score, -priority_score, due_date_score)
                     except ValueError as e:
-                        self.logging_service.error("Invalid data for Ridge prediction", user_id=user_id, task_id=task.id, extra={"error": str(e)})
+                        self.logging_service.error("Invalid data for Ridge prediction", user_id=user_id,
+                                                   task_id=task.id, extra={"error": str(e)})
                         return (-priority_score, due_date_score)
                     except Exception as e:
-                        self.logging_service.error("Unexpected error in Ridge prediction", user_id=user_id, task_id=task.id, extra={"error": str(e)})
+                        self.logging_service.error("Unexpected error in Ridge prediction", user_id=user_id,
+                                                   task_id=task.id, extra={"error": str(e)})
                         return (-priority_score, due_date_score)
                 return (-priority_score, due_date_score)
 
@@ -156,5 +165,6 @@ class TaskPrioritizer(ITaskPrioritizer):
             self.logging_service.error("Failed to prioritize tasks", user_id=user_id, extra={"error": str(e)})
             raise wrap_external_error(e, DatabaseError, "Failed to prioritize tasks") from e
         except Exception as e:
-            self.logging_service.error("Unexpected error in prioritizing tasks", user_id=user_id, extra={"error": str(e)})
+            self.logging_service.error("Unexpected error in prioritizing tasks", user_id=user_id,
+                                       extra={"error": str(e)})
             raise wrap_external_error(e, DatabaseError, "Failed to prioritize tasks") from e

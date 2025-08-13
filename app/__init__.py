@@ -1,23 +1,25 @@
 # app/__init__.py
 import logging
 import os
+
+import click
 from flask import Flask, g, jsonify
 from flask.cli import with_appcontext
+from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
 from flask_session import Session
-from flask_jwt_extended import JWTManager
-import click
-from app.extensions import csrf, mail, limiter, db, cache
+
 from app.auth.routes.api import bp as auth_bp
-from app.user_preferences.routes.api import bp as user_bp
-from app.notion.routes.api import bp as notion_bp
+from app.extensions import csrf, mail, limiter, db, cache
+from app.features.routes.api import bp as features_bp
 from app.icloud.routes.api import bp as icloud_bp
+from app.notion.routes.api import bp as notion_bp
 from app.scheduling.routes.api import bp as scheduling_bp
 from app.subscriptions.routes.api import bp as subscriptions_bp
-from app.features.routes.api import bp as features_bp
+from app.user_preferences.routes.api import bp as user_bp
+from app.utils.app_context import AppContext
 from app.utils.exceptions import AuthError, format_error_response
 from app.utils.service_factory import ServiceFactory
-from app.utils.app_context import AppContext
 from config import Config
 
 
@@ -26,6 +28,13 @@ def create_app(config_class=Config):
     app.config.from_object(config_class)
     app.config["SESSION_TYPE"] = "filesystem" if config_class.TESTING else "redis"
     app.config["SESSION_REDIS"] = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+
+    session_dir = app.config.get("SESSION_FILE_DIR")
+    if session_dir:
+        os.makedirs(session_dir, exist_ok=True)
+
+    Session(app)
+
     Session(app)
 
     # Configure logging
@@ -60,7 +69,7 @@ def create_app(config_class=Config):
     JWTManager(app)
     Migrate(app, db)
 
-    # Initialize services within app context
+    # Initialize services within the app context
     app.extensions['app_context'] = AppContext()
     with app.app_context():
         services = ServiceFactory.initialize_services(cache)

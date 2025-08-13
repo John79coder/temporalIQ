@@ -2,9 +2,11 @@
 from app.extensions import db
 from app.utils.time_zone import TimeZone
 
+
 class TimestampMixin:
     created_at = db.Column(db.DateTime(timezone=True), default=TimeZone.utc_now)
     updated_at = db.Column(db.DateTime(timezone=True), default=TimeZone.utc_now, onupdate=TimeZone.utc_now)
+
 
 class iCloudConnection(db.Model, TimestampMixin):
     __tablename__ = "icloud_connections"
@@ -15,6 +17,7 @@ class iCloudConnection(db.Model, TimestampMixin):
     __table_args__ = (
         db.Index('idx_icloud_user_id', 'user_id'),
     )
+
 
 class CalendarSelection(db.Model):
     __tablename__ = "icloud_calendar_selections"

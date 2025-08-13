@@ -1,14 +1,17 @@
 # app/utils/caching.py
-import time
-import os
-from typing import Any, Optional
-from flask_caching import Cache
-from abc import ABC, abstractmethod
-from .security import SecurityService
-from app.utils.exceptions import ServiceUnavailableError, wrap_external_error
-import pickle
-import redis
 import logging
+import os
+import pickle
+import time
+from abc import ABC, abstractmethod
+from typing import Any, Optional
+
+import redis
+from flask_caching import Cache
+
+from app.utils.exceptions import ServiceUnavailableError, wrap_external_error
+from .security import SecurityService
+
 
 class ICacheService(ABC):
     @abstractmethod
@@ -34,6 +37,7 @@ class ICacheService(ABC):
     @abstractmethod
     def print_cache(self) -> None:
         pass
+
 
 class RedisCacheService(ICacheService):
     def __init__(self, cache: Cache, security_service: SecurityService):
@@ -101,9 +105,11 @@ class RedisCacheService(ICacheService):
 
     def print_cache(self) -> None:
         try:
-            logging.getLogger(__name__).info("Redis cache contents cannot be directly printed. Use Redis CLI for inspection.")
+            logging.getLogger(__name__).info(
+                "Redis cache contents cannot be directly printed. Use Redis CLI for inspection.")
         except Exception as e:
             logging.getLogger(__name__).error(f"Error accessing cache: {str(e)}")
+
 
 class InMemoryCacheService(ICacheService):
     def __init__(self, security_service: SecurityService):
@@ -196,6 +202,7 @@ class InMemoryCacheService(ICacheService):
                     logging.getLogger(__name__).error(f"Pickle error deserializing cache for key {key}: {str(e)}")
         except Exception as e:
             logging.getLogger(__name__).error(f"Error accessing in-memory cache: {str(e)}")
+
 
 def get_cache_service(cache: Cache, security_service: SecurityService) -> ICacheService:
     logger = logging.getLogger(__name__)

@@ -1,11 +1,13 @@
 # app/user_preferences/models/entities.py
 from app.extensions import db
-from config import Config
 from app.utils.time_zone import TimeZone
+from config import Config
+
 
 class TimestampMixin:
     created_at = db.Column(db.DateTime(timezone=True), default=TimeZone.utc_now)
     updated_at = db.Column(db.DateTime(timezone=True), default=TimeZone.utc_now, onupdate=TimeZone.utc_now)
+
 
 class UserPreferences(db.Model, TimestampMixin):
     __tablename__ = "user_preferences"

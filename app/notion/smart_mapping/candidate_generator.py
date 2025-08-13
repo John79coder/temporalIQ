@@ -1,12 +1,15 @@
 # notion/smart_mapping/candidate_generator.py
 from typing import List
+
 from sqlalchemy.orm import Session
+
+from app.notion.models.entities import FieldMapping
 from app.notion.smart_mapping.interfaces import ICandidateGenerator
 from app.notion.smart_mapping.models import TaskCandidateData
 from app.notion.smart_mapping.task_candidate import TaskCandidateBuilder
-from app.notion.models.entities import FieldMapping
-from app.utils.exceptions import DatabaseError, DataValidationError, wrap_external_error
 from app.utils.caching import ICacheService
+from app.utils.exceptions import DatabaseError, DataValidationError, wrap_external_error
+
 
 class CandidateGenerator(ICandidateGenerator):
     def __init__(self, caching_service: ICacheService, task_candidate_builder: TaskCandidateBuilder):
@@ -34,9 +37,11 @@ class CandidateGenerator(ICandidateGenerator):
             if mapping:
                 self.caching_service.set(cache_key, mapping.__dict__, timeout=604800)
             else:
-                raise DataValidationError(f"No field mapping found for user_id={user_id} and notion_db_id={database_id}")
+                raise DataValidationError(
+                    f"No field mapping found for user_id={user_id} and notion_db_id={database_id}")
         candidates = []
         for row in rows:
-            candidate = self.task_candidate_builder.build_from_row(db,[], row, mapping, user_id=user_id, notion_db_id=database_id)
+            candidate = self.task_candidate_builder.build_from_row(db, [], row, mapping, user_id=user_id,
+                                                                   notion_db_id=database_id)
             candidates.append(candidate)
         return candidates

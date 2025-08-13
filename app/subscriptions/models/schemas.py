@@ -1,7 +1,10 @@
-from pydantic import BaseModel, model_serializer, Field, ConfigDict
 from datetime import datetime
 from typing import Optional
+
+from pydantic import BaseModel, model_serializer, Field, ConfigDict
+
 from app.utils.time_zone import TimeZone
+
 
 class BaseOutModel(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -14,16 +17,19 @@ class BaseOutModel(BaseModel):
                 data[key] = TimeZone.serialize_datetime(value)
         return data
 
+
 class SubscriptionCreate(BaseModel):
     user_id: int = Field(ge=1)
     plan_type: str = Field(default='free', pattern=r'^(free|basic|premium)$')
     stripe_id: Optional[str] = None
+
 
 class SubscriptionUpdate(BaseModel):
     plan_type: Optional[str] = None
     status: Optional[str] = None
     end_date: Optional[datetime] = None
     stripe_id: Optional[str] = None
+
 
 class SubscriptionOut(BaseOutModel):
     id: int

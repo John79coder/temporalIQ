@@ -1,10 +1,10 @@
 # tests/icloud/test_repositories.py
-from app.icloud.repositories.repository import ICloudRepository
 from app.icloud.models.entities import iCloudConnection
+from app.icloud.repositories.repository import ICloudRepository
 from app.utils.encryption import Encryptor
 
-def test_save_icloud_connection(db_session, test_user):
 
+def test_save_icloud_connection(db_session, test_user):
     user, _ = test_user
 
     icloud_repository = ICloudRepository()
@@ -20,8 +20,8 @@ def test_save_icloud_connection(db_session, test_user):
     assert retrieved.encrypted_app_password == encrypted
     assert retrieved.is_active is True
 
-def test_update_icloud_connection(db_session, test_user):
 
+def test_update_icloud_connection(db_session, test_user):
     user, _ = test_user
 
     icloud_repository = ICloudRepository()

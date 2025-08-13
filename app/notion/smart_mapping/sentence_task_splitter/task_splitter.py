@@ -1,6 +1,7 @@
 import os
 import re
 from typing import List
+
 import spacy
 from flask import current_app
 from transformers import T5Tokenizer, T5ForConditionalGeneration
@@ -10,6 +11,7 @@ class ProcessorResult:
     def __init__(self, segments: List[str], confidence: float = 1.0):
         self.segments = segments
         self.confidence = confidence
+
 
 class SentenceSplitter:
     def __init__(self):
@@ -22,12 +24,10 @@ class SentenceSplitter:
         self.tokenizer = T5Tokenizer.from_pretrained(checkpoint_path)
         self.t5_model = T5ForConditionalGeneration.from_pretrained(checkpoint_path)
 
-
     def split_with_spacy(self, sentence: str) -> ProcessorResult:
 
         if not self.nlp:
             self.nlp = spacy.load(self.model_path)
-
 
         doc = self.nlp(sentence)
         verbs = [tok for tok in doc if tok.pos_ == "VERB" and tok.dep_ in ("ROOT", "conj")]

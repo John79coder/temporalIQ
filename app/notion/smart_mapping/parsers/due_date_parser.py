@@ -4,6 +4,7 @@ from typing import Optional
 
 from app.notion.smart_mapping.parsers.field_value_parser import FieldValueParser
 
+
 class DueDateParser(FieldValueParser):
     DATE_PATTERNS = [
         # Specific absolute dates

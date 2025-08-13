@@ -1,10 +1,11 @@
-from app.notion.smart_mapping.page_value_extractors.base import PageValueExtractor
-from app.features.services.service import FeaturesService
-from sqlalchemy.orm import Session
-from typing import List, Dict
 import re
+from typing import List, Dict
 
+from sqlalchemy.orm import Session
+
+from app.features.services.service import FeaturesService
 from app.notion.models.schemas import PartialCandidate
+from app.notion.smart_mapping.page_value_extractors.base import PageValueExtractor
 
 
 class CompletionExtractor(PageValueExtractor):

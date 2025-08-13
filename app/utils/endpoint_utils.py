@@ -1,16 +1,18 @@
 # app/utils/endpoint_utils.py
+import logging
 from functools import wraps
-import requests
+
 import jwt  # Add PyJWT import
+import requests
+import wtforms.validators
 from flask import request, g, current_app, jsonify, make_response
 from flask_wtf.csrf import validate_csrf
+
 from app.auth.models.entities import User
 from app.utils.exceptions import (
     AuthError, ServiceUnavailableError, DatabaseError,
     wrap_external_error, format_error_response
 )
-import wtforms.validators
-import logging
 
 
 def csrf_protected(f):

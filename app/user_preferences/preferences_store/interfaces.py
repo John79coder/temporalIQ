@@ -2,7 +2,9 @@
 
 from abc import ABC, abstractmethod
 from typing import Optional
+
 from sqlalchemy.orm import Session
+
 from app.user_preferences.models.entities import UserPreferences
 from app.user_preferences.models.schemas import PreferencesCreate
 

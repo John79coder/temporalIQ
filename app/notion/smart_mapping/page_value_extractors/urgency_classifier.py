@@ -1,12 +1,15 @@
 # app/notion/smart_mapping/page_value_extractors/urgency_classifier.py
 import os
-from flask import current_app
-from app.notion.smart_mapping.page_value_extractors.base import PageValueExtractor
-from app.features.services.service import FeaturesService
-from sqlalchemy.orm import Session
 from typing import List, Dict
+
+from flask import current_app
+from sqlalchemy.orm import Session
 from transformers import pipeline
+
+from app.features.services.service import FeaturesService
 from app.notion.models.schemas import PartialCandidate
+from app.notion.smart_mapping.page_value_extractors.base import PageValueExtractor
+
 
 class UrgencyClassifier(PageValueExtractor):
     def __init__(self, features_service: FeaturesService):
@@ -20,11 +23,13 @@ class UrgencyClassifier(PageValueExtractor):
             if self.nlp is None:
                 model_dir = current_app.config.get("MODEL_DIR", ".")
                 model_path = os.path.join(model_dir, "KS-Vijay_urgency-model-aura")
-                self.nlp = pipeline("text-classification", model=model_path, local_files_only=True, model_kwargs={"attn_implementation": "eager"})
+                self.nlp = pipeline("text-classification", model=model_path, local_files_only=True,
+                                    model_kwargs={"attn_implementation": "eager"})
             result = self.nlp(text)[0]
             urgency = result['score']
             confidence = 0.8
         else:
             urgency = 0.5  # Heuristic default
             confidence = 0.5
-        return PartialCandidate(urgency=urgency, confidence=confidence)  # Urgency not in schema; could add field if needed
+        return PartialCandidate(urgency=urgency,
+                                confidence=confidence)  # Urgency not in schema; could add field if needed

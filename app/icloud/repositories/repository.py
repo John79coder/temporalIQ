@@ -2,9 +2,10 @@
 from sqlalchemy.orm import Session
 
 from app.icloud.models.entities import iCloudConnection, CalendarSelection
-from app.utils.exceptions import DatabaseError, wrap_external_error
 from app.repositories.base import AbstractRepository
+from app.utils.exceptions import DatabaseError, wrap_external_error
 from app.utils.time_zone import TimeZone
+
 
 class ICloudRepository(AbstractRepository):
     @staticmethod

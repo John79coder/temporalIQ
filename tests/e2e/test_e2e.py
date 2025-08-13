@@ -1,16 +1,14 @@
 # tests/e2e/test_e2e.py
-from app.icloud.models.schemas import TimeBlock
 from datetime import timedelta
-
 from unittest.mock import Mock, patch
 
 from pydantic import HttpUrl
 
-from app.utils.time_zone import TimeZone
+from app.features.models.schemas import AISettingsUpdate
+from app.icloud.models.schemas import TimeBlock
 from app.notion.models.entities import TaskCandidate
 from app.user_preferences.models.entities import UserPreferences
-
-from app.features.models.schemas import AISettingsUpdate
+from app.utils.time_zone import TimeZone
 
 
 @patch("requests.sessions.Session.post")
@@ -22,20 +20,21 @@ from app.features.models.schemas import AISettingsUpdate
 @patch("app.icloud.client.caldav_client.CalDAVClient.list_calendars", return_value=[])
 @patch("app.utils.encryption.Encryptor.encrypt", return_value="test-encrypted")
 def test_full_user_flow_mapping_to_calendar_write(
-    mock_encrypt,
-    mock_list_calendars,
-    mock_caldav_init,
-    mock_write_event,
-    mock_fetch_events,
-    mock_fetch_rows,
-    mock_fetch_schema,
-    mock_requests_post,
-    authorized_client,
-    db_session,
-    app,
-    test_user,
-    features_service):
-    mock_fetch_schema.return_value = {"Title": {"type": "title"}, "Due": {"type": "date"}, "Duration": {"type": "number"}}
+        mock_encrypt,
+        mock_list_calendars,
+        mock_caldav_init,
+        mock_write_event,
+        mock_fetch_events,
+        mock_fetch_rows,
+        mock_fetch_schema,
+        mock_requests_post,
+        authorized_client,
+        db_session,
+        app,
+        test_user,
+        features_service):
+    mock_fetch_schema.return_value = {"Title": {"type": "title"}, "Due": {"type": "date"},
+                                      "Duration": {"type": "number"}}
     mock_fetch_rows.return_value = [
         {
             "properties": {
@@ -67,7 +66,6 @@ def test_full_user_flow_mapping_to_calendar_write(
     )
     db_session.add(preferences)
 
-
     with patch("app.features.services.service.SubscriptionsService.is_premium", return_value=True):
         features_service.update_settings(db_session, user_id, AISettingsUpdate(
             use_llm_mapping=False,
@@ -81,7 +79,6 @@ def test_full_user_flow_mapping_to_calendar_write(
             duration_learning_scope='off',
             mapping_learning_scope='off',
             slot_ranking_learning_scope='off'))
-
 
     with app.app_context():
         # Step 1: Connect to Notion
@@ -112,7 +109,8 @@ def test_full_user_flow_mapping_to_calendar_write(
 
         # Step 3: Generate candidates
         generate_candidates_response = authorized_client.post(
-            "/notion/generate-candidates", json={"database_id": "db1"}, headers={"X-CSRF-Token": authorized_client.csrf_token}
+            "/notion/generate-candidates", json={"database_id": "db1"},
+            headers={"X-CSRF-Token": authorized_client.csrf_token}
         )
         assert generate_candidates_response.status_code == 200
         assert len(generate_candidates_response.json) == 1
@@ -173,7 +171,6 @@ def test_api_schedule_preview_time_blocks(authorized_client, db_session, app, te
     )
     db_session.add(preferences)
 
-
     with patch("app.features.services.service.SubscriptionsService.is_premium", return_value=True):
         features_service.update_settings(db_session, user_id, AISettingsUpdate(
             use_llm_mapping=False,
@@ -209,7 +206,8 @@ def test_api_schedule_preview_time_blocks(authorized_client, db_session, app, te
     def prioritize_passthrough(tasks, db):
         return tasks
 
-    with patch('app.scheduling.services.task_prioritizer.TaskPrioritizer.prioritize_tasks', side_effect=prioritize_passthrough):
+    with patch('app.scheduling.services.task_prioritizer.TaskPrioritizer.prioritize_tasks',
+               side_effect=prioritize_passthrough):
         with patch('app.scheduling.services.free_time_finder.FreeTimeFinder.find_free_slots', return_value=[
             TimeBlock(
                 start=TimeZone.utc_now(),

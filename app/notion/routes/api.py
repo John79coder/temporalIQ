@@ -3,24 +3,28 @@ from typing import Type
 
 from flask import Blueprint, request, jsonify, g, current_app
 from pydantic import ValidationError as PydanticValidationError
-from app.utils.endpoint_utils import verify_jwt, csrf_protected
-from app.utils.exceptions import DataValidationError, NotionError, DatabaseError, ServiceUnavailableError, AuthError, \
-    format_error_response, make_handled_error_response, wrap_external_error
+
 from app.extensions import limit, limiter
 from app.notion.client.notion_client import NotionClient
 from app.notion.models.schemas import NotionTokenIn, NotionTokenOut, FieldMappingIn, FieldMappingOut, TaskCandidateOut, \
     DatabaseOut
+from app.utils.endpoint_utils import verify_jwt, csrf_protected
+from app.utils.exceptions import DataValidationError, NotionError, DatabaseError, ServiceUnavailableError, AuthError, \
+    format_error_response, make_handled_error_response, wrap_external_error
 
 bp = Blueprint("notion", __name__, url_prefix="/notion")
 
+
 def get_notion_connection(user_id: int):
     return current_app.extensions['app_context'].get_service('notion_auth_service').get_connection(g.db, user_id)
+
 
 def client() -> NotionClient:
     if not hasattr(g, 'notion_client'):
         encryptor = current_app.extensions['app_context'].get_service('encryptor')
         g.notion_client = NotionClient(encryptor)
     return g.notion_client
+
 
 @bp.route("/connect", methods=["POST"])
 @verify_jwt
@@ -48,6 +52,7 @@ def connect():
     except Exception as e:
         return make_handled_error_response(Type[Exception], str(e), 500)
 
+
 @bp.route("/map-schema", methods=["POST"])
 @verify_jwt
 @csrf_protected
@@ -68,15 +73,20 @@ def map_schema():
             result.to_dict(),
             timeout=604800  # 7 days
         )
-        for field, concept in [("title_field", "title"), ("due_date_field", "due_date"), ("duration_field", "duration")]:
+        for field, concept in [("title_field", "title"), ("due_date_field", "due_date"),
+                               ("duration_field", "duration")]:
             corrected = getattr(data, field)
             if corrected:
-                current_app.extensions['app_context'].get_service('feedback_service').log_feedback(g.db, data.user_id, data.notion_db_id, corrected, concept)
+                current_app.extensions['app_context'].get_service('feedback_service').log_feedback(g.db, data.user_id,
+                                                                                                   data.notion_db_id,
+                                                                                                   corrected, concept)
         return jsonify(FieldMappingOut.model_validate(result).model_dump())
     except DatabaseError as e:
         return make_handled_error_response(DatabaseError, str(e), 500)
 
+
 from flask import Response
+
 
 @bp.route("/generate-candidates", methods=["POST"])
 @verify_jwt
@@ -129,7 +139,8 @@ def generate() -> Response:
             {"schema": schema, "rows": rows}, g.db, g.current_user.id, database_id
         )
 
-        task_candidates = current_app.extensions['app_context'].get_service('mapping_service').save_task_candidates(g.db, task_candidate_data)
+        task_candidates = current_app.extensions['app_context'].get_service('mapping_service').save_task_candidates(
+            g.db, task_candidate_data)
 
         return jsonify([
             TaskCandidateOut.model_validate(c).model_dump(mode="json")
@@ -145,6 +156,7 @@ def generate() -> Response:
         return make_handled_error_response(ServiceUnavailableError, str(e), 500)
     except Exception as e:
         return make_handled_error_response(ServiceUnavailableError, str(e), 500)
+
 
 @bp.route("/databases", methods=["GET"])
 @verify_jwt
@@ -182,13 +194,15 @@ def list_databases():
     except DatabaseError as e:
         return make_handled_error_response(DatabaseError, "Database error", 500)
 
+
 @bp.route("/refresh-token", methods=["POST"])
 @verify_jwt
 @csrf_protected
 @limiter.limit(limit("3 per minute"))
 def refresh_token():
     try:
-        conn = current_app.extensions['app_context'].get_service('notion_auth_service').refresh_token(g.db, g.current_user.id)
+        conn = current_app.extensions['app_context'].get_service('notion_auth_service').refresh_token(g.db,
+                                                                                                      g.current_user.id)
         if not conn:
             return make_handled_error_response(NotionError, "Token refresh failed", 400)
 
@@ -199,13 +213,15 @@ def refresh_token():
             encrypt=True
         )
 
-        current_app.extensions['app_context'].get_service('caching_service').delete(f"notion:databases:{g.current_user.id}")
+        current_app.extensions['app_context'].get_service('caching_service').delete(
+            f"notion:databases:{g.current_user.id}")
         return jsonify(NotionTokenOut.model_validate(conn).model_dump())
 
     except (DatabaseError, ServiceUnavailableError, NotionError) as e:
         return make_handled_error_response(type(e), str(e), 500)
     except Exception as e:
         return make_handled_error_response(Type[Exception], str(e), 500)
+
 
 @bp.route("/preview-mapping", methods=["POST"])
 @verify_jwt
@@ -235,7 +251,9 @@ def preview_mapping():
                 timeout=604800  # 7 days
             )
 
-        matches = current_app.extensions['app_context'].get_service('mapping_engine').preview_field_matches(schema, g.db, g.current_user.id)
+        matches = current_app.extensions['app_context'].get_service('mapping_engine').preview_field_matches(schema,
+                                                                                                            g.db,
+                                                                                                            g.current_user.id)
 
         return jsonify([
             {
@@ -252,6 +270,7 @@ def preview_mapping():
         return jsonify(format_error_response(e, 500))
     except Exception as e:
         return jsonify(format_error_response(e, 500))
+
 
 # NEW: Added endpoint for page-based candidate generation, mirroring database flow but for pages
 @bp.route("/pages/generate-candidates", methods=["POST"])

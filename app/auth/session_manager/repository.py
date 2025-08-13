@@ -3,13 +3,15 @@ import logging
 import secrets
 from datetime import datetime
 from typing import Optional, List
+
 from sqlalchemy.orm import Session
 
 from app.auth.models.entities import User, PasswordResetToken
-from app.utils.exceptions import DatabaseError, wrap_external_error
 from app.repositories.base import AbstractRepository
+from app.utils.exceptions import DatabaseError, wrap_external_error
 from app.utils.security import pwd_context
 from app.utils.time_zone import TimeZone
+
 
 class UserRepository(AbstractRepository):
 

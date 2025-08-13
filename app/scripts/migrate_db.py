@@ -1,8 +1,8 @@
 # app/scripts/migrate_db.py
-import os
-import sys
 import logging
+import os
 import subprocess
+import sys
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -15,6 +15,7 @@ logger.info(f"Added project root to sys.path: {project_root}")
 
 from app import create_app
 from config import Config, TestingConfig
+
 
 def run_migration(config_class, env_name, db_url):
     """Run Flask-Migrate commands for the specified environment."""
@@ -45,6 +46,7 @@ def run_migration(config_class, env_name, db_url):
         except Exception as e:
             logger.error(f"Migration failed for {env_name}: {e}")
             raise
+
 
 if __name__ == "__main__":
     run_migration(Config, "production", Config.DATABASE_URL)

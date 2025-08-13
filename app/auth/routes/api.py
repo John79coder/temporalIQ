@@ -1,17 +1,21 @@
 # app/auth/routes/api.py
+from datetime import timedelta
+
+import jwt
+import requests
 from flask import Blueprint, request, jsonify, current_app, g, make_response
 from flask_wtf.csrf import generate_csrf
+from pydantic import ValidationError as PydanticValidationError
+
+from app.auth.models.schemas import UserCreate, UserLogin, TokenSchema, UserOut
 from app.extensions import limit, limiter, csrf_exempt
 from app.utils.endpoint_utils import verify_jwt, csrf_protected
-from app.utils.exceptions import DataValidationError, DatabaseError, AuthError, ServiceUnavailableError, format_error_response
-from pydantic import ValidationError as PydanticValidationError
-from app.auth.models.schemas import UserCreate, UserLogin, TokenSchema, UserOut
+from app.utils.exceptions import DataValidationError, DatabaseError, AuthError, ServiceUnavailableError, \
+    format_error_response
 from app.utils.time_zone import TimeZone
-import jwt
-from datetime import timedelta
-import requests
 
 bp = Blueprint("auth", __name__, url_prefix="/auth")
+
 
 @bp.route("/signup", methods=["POST"])
 @csrf_protected
@@ -33,7 +37,8 @@ def signup():
             current_app.config["JWT_SECRET_KEY"],
             algorithm=current_app.config["JWT_ALGORITHM"]
         )
-        return jsonify({"user": UserOut.model_validate(user).model_dump(), "jwt": jwt_token, "token": email_verification_token.token}), 200
+        return jsonify({"user": UserOut.model_validate(user).model_dump(), "jwt": jwt_token,
+                        "token": email_verification_token.token}), 200
     except AuthError as e:
         error_response, status_code = format_error_response(AuthError(str(e)), 401)
         return make_response(jsonify(error_response), status_code)
@@ -43,6 +48,7 @@ def signup():
     except ServiceUnavailableError as e:
         error_response, status_code = format_error_response(ServiceUnavailableError(str(e)), 500)
         return make_response(jsonify(error_response), status_code)
+
 
 @bp.route("/login", methods=["POST"])
 @csrf_protected
@@ -76,6 +82,7 @@ def login():
         error_response, status_code = format_error_response(DatabaseError(str(e)), 500)
         return make_response(jsonify(error_response), status_code)
 
+
 @bp.route("/verify", methods=["POST"])
 @csrf_protected
 @limiter.limit(limit("5 per minute"))
@@ -107,6 +114,7 @@ def verify_email():
         error_response, status_code = format_error_response(ServiceUnavailableError(str(e)), 500)
         return make_response(jsonify(error_response), status_code)
 
+
 @bp.route("/apple-signin", methods=["POST"])
 @csrf_protected
 @limiter.limit(limit("5 per minute"))
@@ -123,7 +131,8 @@ def apple_signin():
         if not jwks:
             with requests.Session() as session:
                 jwks = session.get("https://appleid.apple.com/auth/keys").json()
-            current_app.extensions['app_context'].get_service('caching_service').set(jwks_cache_key, jwks, timeout=604800)
+            current_app.extensions['app_context'].get_service('caching_service').set(jwks_cache_key, jwks,
+                                                                                     timeout=604800)
         user = authentication_service.authenticate_apple_user(g.db, id_token, jwks)
         jwt_token = jwt.encode(
             {"sub": str(user.id), "exp": TimeZone.utc_now() + timedelta(hours=24)},
@@ -138,6 +147,7 @@ def apple_signin():
     except (AuthError, DatabaseError) as e:
         error_response, status_code = format_error_response(e, 401 if isinstance(e, AuthError) else 500)
         return make_response(jsonify(error_response), status_code)
+
 
 @bp.route("/onboarding", methods=["GET"])
 @limiter.exempt()
@@ -156,11 +166,13 @@ def onboarding():
                 {"step": 5, "title": "Review Schedule", "description": "Approve suggested time blocks."}
             ]
         }
-        current_app.extensions['app_context'].get_service('caching_service').set(cache_key, response, timeout=2592000)  # 30 days
+        current_app.extensions['app_context'].get_service('caching_service').set(cache_key, response,
+                                                                                 timeout=2592000)  # 30 days
         return jsonify(response)
     except ServiceUnavailableError as e:
         error_response, status_code = format_error_response(e, 500)
         return make_response(jsonify(error_response), status_code)
+
 
 @bp.route("/test-session", methods=["POST"])
 @csrf_exempt
@@ -169,8 +181,10 @@ def test_session_setup():
         token = generate_csrf()
         return jsonify({"csrf_token": token})
     except RuntimeError:
-        error_response, status_code = format_error_response(ServiceUnavailableError("Failed to generate CSRF token"), 500)
+        error_response, status_code = format_error_response(ServiceUnavailableError("Failed to generate CSRF token"),
+                                                            500)
         return make_response(jsonify(error_response), status_code)
+
 
 @bp.route("/reset-password", methods=["POST"])
 @csrf_protected
@@ -195,6 +209,7 @@ def request_password_reset():
     except DatabaseError as e:
         error_response, status_code = format_error_response(DatabaseError(str(e)), 500)
         return make_response(jsonify(error_response), status_code)
+
 
 @bp.route("/reset-password/confirm", methods=["POST"])
 @csrf_protected
@@ -226,6 +241,7 @@ def confirm_password_reset():
         error_response, status_code = format_error_response(DatabaseError(str(e)), 500)
         return make_response(jsonify(error_response), status_code)
 
+
 @bp.route("/2fa/setup", methods=["GET"])
 @verify_jwt
 @csrf_protected
@@ -244,6 +260,7 @@ def setup_2fa():
     except Exception as e:
         error_response, status_code = format_error_response(AuthError(str(e)), 500)
         return make_response(jsonify(error_response), status_code)
+
 
 @bp.route("/2fa/verify", methods=["POST"])
 @csrf_protected

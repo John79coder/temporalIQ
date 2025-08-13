@@ -1,5 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import List, Dict
+
 from sqlalchemy.orm import Session
 
 from app.notion.models.schemas import PartialCandidate

@@ -1,13 +1,6 @@
 # tests/integration/test_integration.py
 from unittest.mock import patch
 
-from app.notion.smart_mapping.notion_database_engine import NotionDatabaseEngine
-from app.notion.smart_mapping.detector_registry import DetectorRegistry
-from app.notion.smart_mapping.field_detector_aggregator import FieldDetectorAggregator
-from app.notion.smart_mapping.schema_parser import SchemaParser
-from app.notion.smart_mapping.candidate_generator import CandidateGenerator
-from app.notion.smart_mapping.task_candidate import TaskCandidateBuilder
-
 
 @patch("app.notion.client.notion_client.NotionClient.fetch_schema")
 @patch("app.notion.client.notion_client.NotionClient.fetch_rows")
@@ -17,14 +10,15 @@ def test_notion_to_task_candidate_flow(mock_rows, mock_schema, mapping_engine, t
     mock_schema.return_value = {"Title": {"type": "title"}, "Due": {"type": "date"}}
     mock_rows.return_value = [{"properties": {"Title": {"title": [{"plain_text": "Task"}]}}}]
 
-
     from app.notion.models.entities import FieldMapping
     mapping = FieldMapping(user_id=user_id, notion_db_id="db1", title_field="Title", due_date_field="Due")
     db_session.add(mapping)
     db_session.commit()
 
-    candidates = mapping_engine.generate_candidates({"schema": mock_schema(), "rows": mock_rows()}, db_session, 1, "db1")
+    candidates = mapping_engine.generate_candidates({"schema": mock_schema(), "rows": mock_rows()}, db_session, 1,
+                                                    "db1")
     assert len(candidates) > 0
+
 
 @patch("app.icloud.services.event_service.CalDAVEventService.write_scheduled_event")
 @patch("app.icloud.services.event_service.CalDAVEventService.fetch_user_events")

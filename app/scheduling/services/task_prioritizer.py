@@ -1,5 +1,6 @@
 # app/scheduling/services/task_prioritizer.py
 import os
+from pickle import UnpicklingError
 from typing import List
 
 import joblib
@@ -36,24 +37,43 @@ class TaskPrioritizer(ITaskPrioritizer):
         self.logging_service = logging_service
         self.priority_weights = {"high": 3, "medium": 2, "low": 1, None: 0}
         self.model_path = os.path.join(current_app.config.get('MODEL_DIR', '.'), "task_prioritizer_model.pkl")
-        self.ridge_model = self._load_model()
+        self.ridge_model = None
 
-    def _load_model(self):
-        """Load Ridge model from file or initialize new."""
+    def _load_model(self) -> Ridge:
+        if self.ridge_model is not None:
+            return self.ridge_model
+
+        self.logging_service.info("Loading Ridge model...")
+
+        model_dir = os.path.dirname(self.model_path) or "."
         try:
+            if not os.path.isdir(model_dir):
+                os.makedirs(model_dir, exist_ok=True)
+
             if os.path.exists(self.model_path):
-                return joblib.load(self.model_path)
-            return Ridge()
-        except FileNotFoundError as e:
-            self.logging_service.error("Ridge model file not found, initializing new", extra={"error": str(e)})
-            return Ridge()
-        except Exception as e:
-            self.logging_service.error("Failed to load Ridge model", extra={"error": str(e)})
-            return Ridge()
+                self.ridge_model = joblib.load(self.model_path)  # may raise EOFError/ValueError/UnpicklingError
+            else:
+                self.ridge_model = Ridge()
+
+            self.logging_service.info("Ridge model loaded")
+            return self.ridge_model
+
+        except (FileNotFoundError, EOFError, ValueError, UnpicklingError, Exception) as e:
+            self.logging_service.error(
+                "Failed to load Ridge model; falling back to fresh model",
+                extra={"error": str(e)}
+            )
+            self.ridge_model = Ridge()
+            return self.ridge_model
+
 
     @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
     def _save_model(self):
-        """Save Ridge model with retries."""
+
+        if self.ridge_model is None:
+            return
+
+        os.makedirs(os.path.dirname(self.model_path) or ".", exist_ok=True)
         joblib.dump(self.ridge_model, self.model_path)
 
     def _fetch_slot_choices(self, db: Session, user_id: int, scope: str) -> List[AITrainingEvent]:
@@ -65,7 +85,7 @@ class TaskPrioritizer(ITaskPrioritizer):
             raise
 
     def _train_model(self, db: Session, user_id: int) -> bool:
-        """Train Ridge model on slot choice data."""
+
         try:
             settings = self.features_service.get_settings(db, user_id)
             scope = settings.slot_ranking_learning_scope
@@ -94,6 +114,9 @@ class TaskPrioritizer(ITaskPrioritizer):
                     self.logging_service.error("Invalid JSON in training event", user_id=user_id, task_id=event.task_id,
                                                extra={"error": str(e), "event_id": event.id})
                     continue
+
+            self.ridge_model = self._load_model()
+
             self.ridge_model.fit(np.array(features), np.array(labels))
             scores = cross_val_score(self.ridge_model, np.array(features), np.array(labels), cv=5)
             mean_cv_acc = np.mean(scores)

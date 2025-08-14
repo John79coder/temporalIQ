@@ -173,53 +173,21 @@ class TimeBlockGenerator(ITimeBlockGenerator):
                                        extra={"error": str(e), "title": title})
             return self._heuristic_urgency(title)
 
-    def _try_allocate_task_to_slots(
-            self,
-            task: Task,
-            required_minutes: int,
-            user_id: int,
-            calendar_id: str,
-            slots: List[TimeBlock]
-    ) -> Tuple[Optional[TimeBlock], List[TimeBlock]]:
-        """Allocate a task to available slots."""
-        try:
-            accumulated_duration = 0
-            consumed_slots = []
+    def _try_allocate_task_to_slots(self, task: Task, required_minutes: int, user_id: int, calendar_id: str,
+                                    slots: List[TimeBlock]) -> Tuple[Optional[TimeBlock], List[TimeBlock]]:
+        for i, slot in enumerate(slots):
+            slot_duration = int((slot.end - slot.start).total_seconds() / 60)
+            if slot_duration >= required_minutes:
+                start_time = slot.start
+                end_time = start_time + timedelta(minutes=required_minutes)
+                remaining_slots = slots[:i] + [
+                    TimeBlock(user_id=user_id, calendar_id=calendar_id, start=end_time, end=slot.end)] + slots[i + 1:]
+                remaining_slots = [s for s in remaining_slots if
+                                   (s.end - s.start).total_seconds() > 0]  # Remove empties
+                return TimeBlock(user_id=user_id, calendar_id=calendar_id, start=start_time, end=end_time,
+                                 task_id=task.id), remaining_slots
+        return None, slots
 
-            for slot in slots:
-                slot_duration = int((slot.end - slot.start).total_seconds() / 60)
-                accumulated_duration += slot_duration
-                consumed_slots.append(slot)
-                if accumulated_duration >= required_minutes:
-                    break
-
-            if accumulated_duration < required_minutes:
-                return None, slots  # Not enough time
-
-            start_time = consumed_slots[0].start
-            end_time = start_time + timedelta(minutes=required_minutes)
-
-            remaining_slots = slots[len(consumed_slots):]
-
-            if end_time < consumed_slots[-1].end:
-                remaining_slots.insert(0, TimeBlock(
-                    user_id=user_id,
-                    calendar_id=calendar_id,
-                    start=end_time,
-                    end=consumed_slots[-1].end
-                ))
-
-            return TimeBlock(
-                user_id=user_id,
-                calendar_id=calendar_id,
-                start=start_time,
-                end=end_time,
-                task_id=task.id
-            ), remaining_slots
-        except Exception as e:
-            self.logging_service.error("Failed to allocate task to slots", user_id=user_id, task_id=task.id,
-                                       extra={"error": str(e)})
-            return None, slots
 
     def _log_urgency_event(self, db: Session, task: Task, urgency: float, user_id: int):
         """Log urgency feedback to AI training events."""

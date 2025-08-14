@@ -1,7 +1,8 @@
 # tests/e2e/test_e2e.py
-from datetime import timedelta
+from datetime import timedelta, datetime
 from unittest.mock import Mock, patch
 
+import pytz
 from pydantic import HttpUrl
 
 from app.features.models.schemas import AISettingsUpdate
@@ -19,7 +20,9 @@ from app.utils.time_zone import TimeZone
 @patch("app.icloud.client.caldav_client.CalDAVClient.__init__", return_value=None)
 @patch("app.icloud.client.caldav_client.CalDAVClient.list_calendars", return_value=[])
 @patch("app.utils.encryption.Encryptor.encrypt", return_value="test-encrypted")
+@patch("app.utils.time_zone.TimeZone.utc_now", return_value=datetime(2025, 7, 18, tzinfo=pytz.UTC))  # Make 07-19 "future"
 def test_full_user_flow_mapping_to_calendar_write(
+        mock_utc_now,  # New patch for utc_now
         mock_encrypt,
         mock_list_calendars,
         mock_caldav_init,
@@ -40,11 +43,11 @@ def test_full_user_flow_mapping_to_calendar_write(
             "properties": {
                 "Title": {"title": [{"plain_text": "Test Task"}]},
                 "Due": {"date": {"start": "2025-07-20T00:00:00Z"}},
-                "Duration": {"number": 60},
+                "Duration": {"number": 30},  # Changed to 30min to fit in single slot
             }
         }
     ]
-    mock_fetch_events.return_value = []  # No existing events, all slots free
+    mock_fetch_events.return_value = [] # No existing events, all slots free
     mock_requests_post.return_value = Mock(
         status_code=200,
         json=lambda: {
@@ -140,7 +143,7 @@ def test_full_user_flow_mapping_to_calendar_write(
         )
         assert preview_response.status_code == 200
         time_blocks = preview_response.json["time_blocks"]
-        assert len(time_blocks) > 0  # At least one block generated
+        assert len(time_blocks) > 0 # At least one block generated
 
         # Step 6: Confirm scheduling
         confirm_time_blocks = [
@@ -158,7 +161,6 @@ def test_full_user_flow_mapping_to_calendar_write(
         )
         assert confirm_response.status_code == 200
         assert mock_write_event.call_count == sum(1 for tb in confirm_time_blocks if tb["task_id"] is not None)
-
 
 def test_api_schedule_preview_time_blocks(authorized_client, db_session, app, test_user, features_service):
     user, user_id = test_user

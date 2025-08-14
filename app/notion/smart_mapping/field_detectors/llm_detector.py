@@ -5,6 +5,7 @@ from typing import List
 
 import openai
 from sqlalchemy.orm.session import Session
+from transformers.integrations import tiktoken
 
 from app.features.services.service import FeaturesService
 from app.notion.smart_mapping.field_detectors.base import FieldDetector
@@ -20,6 +21,10 @@ class LLMDetector(FieldDetector):
         api_key = os.getenv("OPENAI_API_KEY")
         self.client = openai.OpenAI(api_key=api_key) if api_key else None
 
+    # Updated detect method for LLMDetector (Issue 9: Add truncation and token check)
+    # Replace the entire detect method in app/notion/smart_mapping/field_detectors/llm_detector.py
+    # Add at file top: import tiktoken
+
     def detect(self, fields: list[dict], rows: List[dict] = None, db: Session = None, user_id: int = None) -> list[
         FieldMatch]:
         if not self.client:
@@ -32,19 +37,33 @@ class LLMDetector(FieldDetector):
             return []  # Skip if toggled off
 
         try:
+            # Truncate for safety
+            fields = fields[:50]  # Limit fields
+            row_sample = rows[:3] if rows else []  # Limit rows
             schema_str = "\n".join([f"- {f['name']}: type={f['type']}" for f in fields])
-            row_sample = rows[:5] if rows else []  # Limit to 5 for prompt size
             rows_str = "\nSample rows: " + "\n".join(
                 [str(row.get('properties', {})) for row in row_sample]) if row_sample else ""
 
             prompt = f"""
-Map these Notion fields to task concepts like title, due_date, duration, priority, status, etc.
-Schema:
-{schema_str}
-{rows_str}
-Output JSON object: {{"matches": [{{"notion_field": "field_name", "matched_concept": "concept", "confidence": 0.0-1.0, "rationale": "explanation"}}]}}
-Resolve ambiguities, e.g., if multiple dates, pick the most likely due_date and explain.
-"""
+    Map these Notion fields to task concepts like title, due_date, duration, priority, status, etc.
+    Schema:
+    {schema_str}
+    {rows_str}
+    Output JSON object: {{"matches": [{{"notion_field": "field_name", "matched_concept": "concept", "confidence": 0.0-1.0, "rationale": "explanation"}}]}}
+    Resolve ambiguities, e.g., if multiple dates, pick the most likely due_date and explain.
+    """
+
+            # Token check/cap
+            encoder = tiktoken.encoding_for_model("gpt-4o-mini")
+            tokens = len(encoder.encode(prompt))
+            if tokens > 4000:
+                # Truncate schema first
+                schema_lines = schema_str.split("\n")[:20]  # e.g., first 20 fields
+                schema_str = "\n".join(schema_lines) + "\n... (truncated for length)"
+                rows_str = ""  # Drop rows if still over
+                prompt = prompt.replace(schema_str, schema_str).replace(rows_str, "")
+                self.logging_service.info(f"Truncated LLM prompt for user {user_id}: Original tokens {tokens}")
+
             response = self.client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "system", "content": prompt}],

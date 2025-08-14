@@ -4,6 +4,7 @@ from datetime import datetime
 from typing import List
 
 from sqlalchemy.orm import Session
+from tenacity import stop_after_attempt, wait_exponential, retry
 
 from app.icloud.models.entities import CalendarSelection
 from app.icloud.models.schemas import CalendarEvent, CalendarMetadata, EventWriteRequest
@@ -63,9 +64,14 @@ class CalDAVEventService(ICalDAVEventService):
         self.caching_service.delete(f"icloud:time_blocks:{user_id}:{calendar_id}:*")
         return uid
 
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
+    def _delete_event_with_retry(self, client, calendar_id: str, uid: str):
+        client.delete_event(calendar_id, uid)
+
     def write_scheduled_blocks(self, user_id: int, db: Session, calendar_id: str,
                                events: List[EventWriteRequest]) -> None:
         written_uids = []
+        failed_deletes = []  # Track for notification
         try:
             for event in events:
                 uid = self.write_scheduled_event(user_id, db, calendar_id, event)
@@ -74,11 +80,13 @@ class CalDAVEventService(ICalDAVEventService):
             client = self.client_manager.get_caldav_client_for_user(db, user_id)
             for uid in written_uids:
                 try:
-                    client.delete_event(calendar_id, uid)
+                    self._delete_event_with_retry(client, calendar_id, uid)
                     logging.info(f"Rollback: Deleted event {uid} from calendar {calendar_id}")
                 except Exception as del_e:
                     logging.error(f"Rollback failed for event {uid}: {str(del_e)}")
-            raise wrap_external_error(e, CalendarError, "Failed to write scheduled blocks")
+                    failed_deletes.append(uid)
+            if failed_deletes:
+                raise wrap_external_error(e, CalendarError, "Failed to write scheduled blocks")
 
     def save_user_calendar_selection(self, db: Session, selection: 'CalendarSelection') -> None:
         try:

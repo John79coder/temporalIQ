@@ -117,18 +117,19 @@ class TimeBlockGenerator(ITimeBlockGenerator):
         daily_counts = defaultdict(int)  # date → count
 
         for task in prioritized:
-            urgency = task.urgency or self._heuristic_urgency(task.title)
+            urgency = task.urgency
             duration = task.duration or 30
             if SchedulingPolicy.should_prioritize_early(urgency):
-                slots = sorted(slots, key=lambda s: s.start)
+                slots = sorted(slots, key=lambda s: s.start)  # Early sort; consider by date for multi-day
 
             block, slots = self._try_allocate_task_to_slots(task, duration, user_id, calendar_id, slots)
             if block:
                 block_day = block.start.date()
                 if daily_counts[block_day] >= max_per_day:
-                    # Skip and restore slot (simplified; in real, find next day's slot)
                     slots.insert(0,
                                  TimeBlock(user_id=user_id, calendar_id=calendar_id, start=block.start, end=block.end))
+                    self.logging_service.info(
+                        f"Skipped block for task {task.id} on {block_day}: max_per_day {max_per_day} reached")
                     continue
                 time_blocks.append(block)
                 daily_counts[block_day] += 1

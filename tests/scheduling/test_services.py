@@ -60,7 +60,8 @@ def test_time_block_generator_generate(mock_get_preferences,  # New mock param
     ]
 
     mock_prioritize_tasks.return_value = [
-        Task(id=1, user_id=1, notion_db_id="db1", title="Test Task", duration=30)
+        Task(id=1, user_id=1, notion_db_id="db1", title="Test Task", duration=30, urgency=0.5)
+        # Add urgency to avoid None
     ]
 
     mock_get_preferences.return_value = UserPreferences(  # Return real instance to make __dict__ picklable
@@ -77,6 +78,7 @@ def test_time_block_generator_generate(mock_get_preferences,  # New mock param
                                                                "17:00")
             assert len(blocks) == 1
             assert blocks[0].task_id == 1
+
 
 def test_free_time_finder_find_slots(free_time_finder, caching_service, event_service):
     db = Mock()

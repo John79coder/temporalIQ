@@ -48,6 +48,10 @@ class VerificationToken(db.Model):
     token = db.Column(db.String, nullable=False, unique=True)
     expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
 
+    __table_args__ = (
+        db.Index('ix_verification_token_token_expires_at', 'token', 'expires_at'),
+    )
+
 
 class PasswordResetToken(db.Model):
     __tablename__ = "password_reset_tokens"

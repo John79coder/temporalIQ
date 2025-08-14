@@ -107,7 +107,8 @@ class ServiceFactory:
                 None,  # Will be set after TaskPrioritizer initialization
                 user_services['features_service'],
                 ai_data_service,
-                logging_service
+                logging_service,
+                preferences_service=user_services['preferences_service']
             )
 
             task_prioritizer = TaskPrioritizer(

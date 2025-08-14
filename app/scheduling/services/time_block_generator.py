@@ -1,10 +1,11 @@
 # app/scheduling/services/time_block_generator.py
 import os
 import re
+from collections import defaultdict
 from datetime import datetime, timedelta
 from typing import List, Tuple, Optional
 
-from dateparser import parse as date_parse
+import pytz
 
 from flask import g, current_app
 from huggingface_hub.errors import EntryNotFoundError
@@ -23,21 +24,24 @@ from app.scheduling.models.policies import SchedulingPolicy
 from app.scheduling.services.free_time_finder import IFreeTimeFinder
 from app.scheduling.services.interfaces import ITimeBlockGenerator
 from app.scheduling.services.task_prioritizer import ITaskPrioritizer
+from app.user_preferences.preferences_store.service import PreferencesService
 from app.utils.caching import ICacheService
 from app.utils.exceptions import DatabaseError, wrap_external_error
 from app.utils.logging_service import LoggingService
+from config import Config
 
 
 class TimeBlockGenerator(ITimeBlockGenerator):
     def __init__(self, caching_service: ICacheService, free_time_finder: IFreeTimeFinder,
                  task_prioritizer: ITaskPrioritizer, features_service: FeaturesService, ai_data_service: AIDataService,
-                 logging_service: LoggingService):
+                 logging_service: LoggingService, preferences_service: PreferencesService):
         self.caching_service = caching_service
         self.free_time_finder = free_time_finder
         self.task_prioritizer = task_prioritizer
         self.features_service = features_service
         self.ai_data_service = ai_data_service
         self.logging_service = logging_service
+        self.preferences_service = preferences_service
         self.task_candidate_repo = TaskCandidateRepository()
         self.nlp = None
 
@@ -49,7 +53,7 @@ class TimeBlockGenerator(ITimeBlockGenerator):
     def get_urgency_score(self, title: str, user_id: int) -> float:
         """Get urgency score for a task title."""
         return self._analyze_task_urgency(title, user_id) if self._check_nlp_enabled(
-            user_id) else self._heuristic_urgency(title)
+            user_id) else TimeBlockGenerator._heuristic_urgency(title)
 
     def generate_time_blocks(
             self,
@@ -93,7 +97,7 @@ class TimeBlockGenerator(ITimeBlockGenerator):
     def _load_and_create_tasks(self, db: Session, user_id: int, notion_db_id: str) -> List[Task]:
         """Load task candidates and create tasks."""
         candidates = self._load_candidates(db, user_id, notion_db_id)
-        tasks = self._create_tasks_from_candidates(candidates)
+        tasks = TimeBlockGenerator._create_tasks_from_candidates(candidates)
         for task in tasks:
             task.urgency = self.get_urgency_score(task.title, user_id)  # NEW: Set urgency float on task creation
         self._persist_tasks(db, tasks)
@@ -102,21 +106,35 @@ class TimeBlockGenerator(ITimeBlockGenerator):
     def _prioritize_and_allocate(self, tasks: List[Task], db: Session, user_id: int, calendar_id: str,
                                  start_date: datetime, end_date: datetime, earliest_time: str, latest_time: str,
                                  settings: UserAISettings) -> List[TimeBlock]:
-        """Prioritize tasks and allocate them to free slots."""
         prioritized = self.task_prioritizer.prioritize_tasks(tasks, db)
         slots = self.free_time_finder.find_free_slots(user_id, db, calendar_id, start_date, end_date, earliest_time,
                                                       latest_time)
+
+        prefs = self.preferences_service.get_preferences(db, user_id)
+        max_per_day = prefs.max_blocks_per_day if prefs and prefs.max_blocks_per_day else Config.DEFAULT_MAX_BLOCKS_PER_DAY  # e.g., 5
+
         time_blocks = []
+        daily_counts = defaultdict(int)  # date → count
+
         for task in prioritized:
-            urgency = task.urgency or self._heuristic_urgency(task.title)  # CHANGED: Use task.urgency float if set
+            urgency = task.urgency or self._heuristic_urgency(task.title)
             duration = task.duration or 30
             if SchedulingPolicy.should_prioritize_early(urgency):
                 slots = sorted(slots, key=lambda s: s.start)
+
             block, slots = self._try_allocate_task_to_slots(task, duration, user_id, calendar_id, slots)
             if block:
+                block_day = block.start.date()
+                if daily_counts[block_day] >= max_per_day:
+                    # Skip and restore slot (simplified; in real, find next day's slot)
+                    slots.insert(0,
+                                 TimeBlock(user_id=user_id, calendar_id=calendar_id, start=block.start, end=block.end))
+                    continue
                 time_blocks.append(block)
+                daily_counts[block_day] += 1
                 if settings.urgency_learning_scope != 'off':
                     self._log_urgency_event(db, task, urgency, user_id)
+
         return time_blocks
 
     def _load_candidates(self, db: Session, user_id: int, notion_db_id: str) -> List[TaskCandidateData]:
@@ -133,7 +151,8 @@ class TimeBlockGenerator(ITimeBlockGenerator):
                                        extra={"error": str(e), "notion_db_id": notion_db_id})
             raise wrap_external_error(e, DatabaseError, "Failed to load candidates") from e
 
-    def _create_tasks_from_candidates(self, candidates: List[TaskCandidateData]) -> List[Task]:
+    @staticmethod
+    def _create_tasks_from_candidates(candidates: List[TaskCandidateData]) -> List[Task]:
         """Create Task entities from candidates."""
         return [Task(
             user_id=c.user_id,
@@ -155,46 +174,73 @@ class TimeBlockGenerator(ITimeBlockGenerator):
             self.logging_service.error("Failed to persist tasks", extra={"error": str(e)})
             raise wrap_external_error(e, DatabaseError, "Failed to persist tasks") from e
 
-    def _heuristic_urgency(self, title: str) -> float:
-        """Enhanced fallback urgency with keywords and relative dates."""
+    @staticmethod
+    def _heuristic_urgency(title: str) -> float:
+        """Enhanced fallback urgency with expanded keywords, phrases, and relative dates."""
         title_lower = title.lower()
 
-        # Expanded keywords for high urgency
-        high_keywords = ['urgent', 'asap', 'immediately', 'now', 'critical', 'deadline', 'today', 'rush']
-        if any(re.search(rf'\b{word}\b', title_lower) for word in high_keywords):
-            return 0.9  # Higher for explicit urgency
+        # Unified urgency patterns (expanded from searches: words/phrases for high/medium/low)
+        # Scores: 0.9+ for high (crises/deadlines), 0.6-0.8 for medium (time-bound), 0.2-0.4 for low (deferred)
+        urgency_patterns = {
+            # High urgency (core words/phrases from Eisenhower/NLP examples)
+            r'\burgent\b': 0.9,
+            r'\basap\b': 0.9,
+            r'\bimmediately\b': 0.9,
+            r'\bnow\b': 0.9,
+            r'\bcritical\b': 0.9,
+            r'\bdeadline\b': 0.9,
+            r'\btoday\b': 0.9,
+            r'\brush\b': 0.9,
+            r'\bcrisis\b': 0.9,  # From crisis management examples
+            r'\bemergency\b': 0.9,  # Common in urgent tasks
+            r'\boverdue\b': 1.0,  # Highest for past-due
+            r'\bfix\b': 0.9,  # e.g., "Fix bug"
+            r'\bresolve\b': 0.9,  # e.g., "Resolve outage"
+            r'\bhandle\b': 0.9,  # e.g., "Handle complaint"
+            r'\bact now\b': 0.9,  # NLP urgency phrases
+            r'\bimmediate action\b': 0.9,
+            r'\bhigh priority\b': 0.9,
 
-        # Medium urgency patterns
-        med_patterns = {
+            # Medium urgency (time-bound, expanded)
             r'\btomorrow\b': 0.7,
-            r'\b(end of|by) (day|week)\b': 0.6
-        }
-        for pattern, score in med_patterns.items():
-            if re.search(pattern, title_lower):
-                return score
+            r'\b(end of|by) (day|week)\b': 0.6,
+            r'\bwithin (hours|24 hours)\b': 0.8,  # Added for tighter deadlines
+            r'\bnext day\b': 0.7,
+            r'\bend of day\b': 0.6,
 
-        # Low urgency patterns
-        low_patterns = {
+            # Low urgency (deferred, expanded)
             r'\bnext (week|month)\b': 0.4,
-            r'\b(later|eventually|someday)\b': 0.2
+            r'\b(later|eventually|someday)\b': 0.2,
+            r'\bnext quarter\b': 0.3,  # Added for longer-term
+            r'\bbacklog\b': 0.2,  # Common in task management
+            r'\bnice to have\b': 0.2,
         }
-        for pattern, score in low_patterns.items():
-            if re.search(pattern, title_lower):
-                return score
 
-        # Parse potential due dates (manual relative for common cases)
+        # Find the maximum matching score from patterns
+        max_score = 0.0
+        for pattern, score in urgency_patterns.items():
+            if re.search(pattern, title_lower):
+                max_score = max(max_score, score)
+
+        # If a pattern matched, return it (overrides date parsing if higher)
+        if max_score > 0.0:
+            return max_score
+
+        # Parse potential due dates (enhanced relative mapping)
         due_match = re.search(r'(due|by|end of)\s+(.+?)(?:$|[.,;!?])', title_lower)
         if due_match:
             due_str = due_match.group(2).strip()
-            now_utc = datetime.now(pytz.UTC)
+            now_utc = datetime.now(pytz.UTC)  # Uses current date (Aug 13, 2025, for calculations)
 
-            # Manual relative mapping
+            # Expanded relative mapping
             relative_map = {
-                'tomorrow': now_utc + timedelta(days=1),
+                'overdue': now_utc - timedelta(days=1),  # Explicitly past
                 'today': now_utc,
+                'tomorrow': now_utc + timedelta(days=1),
                 'next day': now_utc + timedelta(days=1),
                 'next week': now_utc + timedelta(days=7),
                 'next month': now_utc + timedelta(days=30),  # Approximate
+                'next quarter': now_utc + timedelta(days=90),  # Added
                 'end of day': now_utc.replace(hour=23, minute=59, second=59),
                 'end of week': now_utc + timedelta(days=(7 - now_utc.weekday()) % 7),  # Sunday
             }
@@ -203,7 +249,7 @@ class TimeBlockGenerator(ITimeBlockGenerator):
                 if rel in due_str:
                     days_diff = (due_date - now_utc).days
                     if days_diff < 0:
-                        return 1.0  # Overdue (though unlikely for relatives)
+                        return 1.0  # Overdue
                     elif days_diff <= 1:
                         return 0.8
                     elif days_diff <= 7:
@@ -211,7 +257,7 @@ class TimeBlockGenerator(ITimeBlockGenerator):
                     else:
                         return 0.4
 
-            # Attempt strict date parse if no relative
+            # Try absolute date parsing
             try:
                 due_date = datetime.strptime(due_str, '%Y-%m-%d').replace(tzinfo=pytz.UTC)
                 days_diff = (due_date - now_utc).days
@@ -226,7 +272,7 @@ class TimeBlockGenerator(ITimeBlockGenerator):
             except ValueError:
                 pass
 
-        return 0.3
+        return 0.3  # Default low-medium
 
     def _analyze_task_urgency(self, title: str, user_id: int) -> float:
 
@@ -234,16 +280,17 @@ class TimeBlockGenerator(ITimeBlockGenerator):
 
         if not self.nlp:
             self.logging_service.error("NLP model not available, falling back to heuristic", user_id=user_id)
-            return self._heuristic_urgency(title)
+            return TimeBlockGenerator._heuristic_urgency(title)
         try:
             result = self.nlp(title)[0]
             return result['score']
         except Exception as e:
             self.logging_service.error("Failed to analyze urgency", user_id=user_id,
                                        extra={"error": str(e), "title": title})
-            return self._heuristic_urgency(title)
+            return TimeBlockGenerator._heuristic_urgency(title)
 
-    def _try_allocate_task_to_slots(self, task: Task, required_minutes: int, user_id: int, calendar_id: str,
+    @staticmethod
+    def _try_allocate_task_to_slots(task: Task, required_minutes: int, user_id: int, calendar_id: str,
                                     slots: List[TimeBlock]) -> Tuple[Optional[TimeBlock], List[TimeBlock]]:
         for i, slot in enumerate(slots):
             slot_duration = int((slot.end - slot.start).total_seconds() / 60)

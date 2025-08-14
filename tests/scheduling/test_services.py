@@ -26,9 +26,9 @@ def task_prioritizer(caching_service, features_service, preferences_service, ai_
 
 
 @pytest.fixture
-def time_block_generator(caching_service, task_prioritizer, features_service, ai_data_service, logging_service):
+def time_block_generator(caching_service, task_prioritizer, features_service, ai_data_service, logging_service, preferences_service):
     return TimeBlockGenerator(caching_service, None, task_prioritizer, features_service, ai_data_service,
-                              logging_service)
+                              logging_service, preferences_service)
 
 
 @pytest.fixture
@@ -43,7 +43,10 @@ def free_time_finder(caching_service, event_service, features_service, preferenc
 @patch("app.notion.repositories.repository.TaskCandidateRepository.get_candidates")
 @patch("app.scheduling.services.free_time_finder.FreeTimeFinder.find_free_slots")
 @patch("app.scheduling.services.task_prioritizer.TaskPrioritizer.prioritize_tasks")
-def test_time_block_generator_generate(mock_prioritize_tasks, mock_find_free_slots, mock_get_candidates,
+@patch(
+    "app.user_preferences.preferences_store.service.PreferencesService.get_preferences")  # New patch to avoid pickling Mock
+def test_time_block_generator_generate(mock_get_preferences,  # New mock param
+                                       mock_prioritize_tasks, mock_find_free_slots, mock_get_candidates,
                                        time_block_generator, free_time_finder, task_prioritizer):
     mock_database_session = Mock()
 
@@ -60,6 +63,11 @@ def test_time_block_generator_generate(mock_prioritize_tasks, mock_find_free_slo
         Task(id=1, user_id=1, notion_db_id="db1", title="Test Task", duration=30)
     ]
 
+    mock_get_preferences.return_value = UserPreferences(  # Return real instance to make __dict__ picklable
+        user_id=1,
+        max_blocks_per_day=5  # Test value; adjust as needed
+    )
+
     with patch('app.features.services.service.FeaturesService.get_settings') as mock_get_features_settings:
         mock_get_features_settings.return_value = UserAISettings(user_id=1)
 
@@ -67,10 +75,8 @@ def test_time_block_generator_generate(mock_prioritize_tasks, mock_find_free_slo
             blocks = time_block_generator.generate_time_blocks(1, mock_database_session, "db1", "cal1",
                                                                datetime(2025, 7, 12), datetime(2025, 7, 12), "09:00",
                                                                "17:00")
-
-    assert len(blocks) == 1
-    assert blocks[0].task_id == 1
-
+            assert len(blocks) == 1
+            assert blocks[0].task_id == 1
 
 def test_free_time_finder_find_slots(free_time_finder, caching_service, event_service):
     db = Mock()

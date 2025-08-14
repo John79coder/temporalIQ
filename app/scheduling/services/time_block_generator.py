@@ -4,6 +4,8 @@ import re
 from datetime import datetime, timedelta
 from typing import List, Tuple, Optional
 
+from dateparser import parse as date_parse
+
 from flask import g, current_app
 from huggingface_hub.errors import EntryNotFoundError
 from sqlalchemy.exc import SQLAlchemyError
@@ -154,9 +156,77 @@ class TimeBlockGenerator(ITimeBlockGenerator):
             raise wrap_external_error(e, DatabaseError, "Failed to persist tasks") from e
 
     def _heuristic_urgency(self, title: str) -> float:
-        """Fallback urgency detection using keyword matching."""
-        keywords = ['urgent', 'asap', 'immediately', 'now', 'critical', 'deadline']
-        return 0.8 if any(re.search(rf'\b{word}\b', title.lower()) for word in keywords) else 0.3
+        """Enhanced fallback urgency with keywords and relative dates."""
+        title_lower = title.lower()
+
+        # Expanded keywords for high urgency
+        high_keywords = ['urgent', 'asap', 'immediately', 'now', 'critical', 'deadline', 'today', 'rush']
+        if any(re.search(rf'\b{word}\b', title_lower) for word in high_keywords):
+            return 0.9  # Higher for explicit urgency
+
+        # Medium urgency patterns
+        med_patterns = {
+            r'\btomorrow\b': 0.7,
+            r'\b(end of|by) (day|week)\b': 0.6
+        }
+        for pattern, score in med_patterns.items():
+            if re.search(pattern, title_lower):
+                return score
+
+        # Low urgency patterns
+        low_patterns = {
+            r'\bnext (week|month)\b': 0.4,
+            r'\b(later|eventually|someday)\b': 0.2
+        }
+        for pattern, score in low_patterns.items():
+            if re.search(pattern, title_lower):
+                return score
+
+        # Parse potential due dates (manual relative for common cases)
+        due_match = re.search(r'(due|by|end of)\s+(.+?)(?:$|[.,;!?])', title_lower)
+        if due_match:
+            due_str = due_match.group(2).strip()
+            now_utc = datetime.now(pytz.UTC)
+
+            # Manual relative mapping
+            relative_map = {
+                'tomorrow': now_utc + timedelta(days=1),
+                'today': now_utc,
+                'next day': now_utc + timedelta(days=1),
+                'next week': now_utc + timedelta(days=7),
+                'next month': now_utc + timedelta(days=30),  # Approximate
+                'end of day': now_utc.replace(hour=23, minute=59, second=59),
+                'end of week': now_utc + timedelta(days=(7 - now_utc.weekday()) % 7),  # Sunday
+            }
+
+            for rel, due_date in relative_map.items():
+                if rel in due_str:
+                    days_diff = (due_date - now_utc).days
+                    if days_diff < 0:
+                        return 1.0  # Overdue (though unlikely for relatives)
+                    elif days_diff <= 1:
+                        return 0.8
+                    elif days_diff <= 7:
+                        return 0.6
+                    else:
+                        return 0.4
+
+            # Attempt strict date parse if no relative
+            try:
+                due_date = datetime.strptime(due_str, '%Y-%m-%d').replace(tzinfo=pytz.UTC)
+                days_diff = (due_date - now_utc).days
+                if days_diff < 0:
+                    return 1.0
+                elif days_diff <= 1:
+                    return 0.8
+                elif days_diff <= 7:
+                    return 0.6
+                else:
+                    return 0.4
+            except ValueError:
+                pass
+
+        return 0.3
 
     def _analyze_task_urgency(self, title: str, user_id: int) -> float:
 

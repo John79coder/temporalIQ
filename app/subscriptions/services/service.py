@@ -109,6 +109,9 @@ class SubscriptionsService:
             timeout=86400  # 1 day
         )
 
+    # Updated handle_webhook method for SubscriptionsService (Issue 13: Add idempotency via event ID cache check)
+    # Replace the entire handle_webhook method in app/subscriptions/services/service.py
+
     def handle_webhook(self, db: Session, payload, sig_header):
         self.initialize_stripe()  # Ensure Stripe is initialized
         try:
@@ -119,6 +122,13 @@ class SubscriptionsService:
             raise DatabaseError("Invalid payload")
         except stripe.error.SignatureVerificationError:
             raise DatabaseError("Invalid signature")
+
+        # Idempotency check: Skip if event already processed
+        event_key = f"stripe:event:{event['id']}"
+        if self.caching_service.get(event_key):
+            return True  # Already handled; return success
+
+        # Process event
         if event["type"] == "checkout.session.completed":
             session = event['data']['object']
             customer_id = session['customer']
@@ -156,4 +166,7 @@ class SubscriptionsService:
                 sub.status = 'canceled'
                 sub.end_date = TimeZone.utc_now()
                 self.subscriptions_repo.create_or_update(db, sub)
+
+        # Mark as processed
+        self.caching_service.set(event_key, True, timeout=604800)  # 7 days; adjust as needed
         return True

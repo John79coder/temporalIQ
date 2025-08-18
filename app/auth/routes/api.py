@@ -32,13 +32,20 @@ def signup():
         user = authentication_service.create_user(g.db, data.email, data.password)
         email_verification_service = current_app.extensions['app_context'].get_service('email_verification_service')
         email_verification_token = email_verification_service.create_email_verification_token(g.db, user.id, data.email)
+
+        # NEW: Start 14-day Pro reverse trial
+        entitlements_service = current_app.extensions['app_context'].get_service('entitlements_service')
+        entitlements_service.start_reverse_trial(g.db, user.id, tier='pro', days=14)
+
         jwt_token = jwt.encode(
             {"sub": str(user.id), "exp": TimeZone.utc_now() + timedelta(hours=24)},
             current_app.config["JWT_SECRET_KEY"],
             algorithm=current_app.config["JWT_ALGORITHM"]
         )
         return jsonify({"user": UserOut.model_validate(user).model_dump(), "jwt": jwt_token,
-                        "token": email_verification_token.token}), 200
+                        "token": email_verification_token.token,
+                        "trial_info": {"tier": "pro", "days": 14,
+                                       "ends_at": (TimeZone.utc_now() + timedelta(days=14)).isoformat()}}), 200
     except AuthError as e:
         error_response, status_code = format_error_response(AuthError(str(e)), 401)
         return make_response(jsonify(error_response), status_code)

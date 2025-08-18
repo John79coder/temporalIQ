@@ -28,7 +28,20 @@ class Config:
     ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", Fernet.generate_key().decode())
     STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
     STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
-    STRIPE_PRICE_ID_PREMIUM = os.getenv("STRIPE_PRICE_ID_PREMIUM")
+
+
+    # NEW: Stripe price IDs for tiered pricing
+    STRIPE_PRICE_STARTER_MONTHLY = os.getenv("STRIPE_PRICE_STARTER_MONTHLY", "price_starter_monthly")
+    STRIPE_PRICE_STARTER_ANNUAL = os.getenv("STRIPE_PRICE_STARTER_ANNUAL", "price_starter_annual")
+    STRIPE_PRICE_PRO_MONTHLY = os.getenv("STRIPE_PRICE_PRO_MONTHLY", "price_pro_monthly")
+    STRIPE_PRICE_PRO_ANNUAL = os.getenv("STRIPE_PRICE_PRO_ANNUAL", "price_pro_annual")
+    STRIPE_PRICE_BUSINESS_MONTHLY = os.getenv("STRIPE_PRICE_BUSINESS_MONTHLY", "price_business_monthly")
+    STRIPE_PRICE_BUSINESS_ANNUAL = os.getenv("STRIPE_PRICE_BUSINESS_ANNUAL", "price_business_annual")
+
+    # NEW: Frontend URLs for upgrade flows
+    FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
+
+
     MODEL_DIR = os.getenv("MODEL_DIR", "ai_models_cache")
 
     SESSION_TYPE = "filesystem"

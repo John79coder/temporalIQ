@@ -161,8 +161,9 @@ def test_get_events_invalid_parameters(mock_user, mock_dav_client, mock_decrypt,
 @patch('caldav.DAVClient')
 @patch('app.auth.models.entities.User')
 def test_create_event_success(mock_user, mock_dav_client, mock_decrypt, mock_cache_set, authorized_client, db_session,
-                              app, test_user):
+                              app, test_user, allow_calendar_writes):
     _, user_id = test_user
+
     mock_decrypt.return_value = 'valid_app_password'
     mock_cache_set.return_value = None
     mock_user_instance = MagicMock()
@@ -192,7 +193,7 @@ def test_create_event_success(mock_user, mock_dav_client, mock_decrypt, mock_cac
         assert response.json["message"] == "Event written to iCloud."
 
 
-def test_create_event_no_connection(authorized_client, db_session, app, test_user):
+def test_create_event_no_connection(authorized_client, db_session, app, test_user, allow_calendar_writes):
     _, user_id = test_user
     with app.app_context():
         g.db = db_session

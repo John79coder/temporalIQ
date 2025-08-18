@@ -87,11 +87,43 @@ def get_events():
 @csrf_protected
 @limiter.limit(limit("20 per minute"))
 def create_event():
+    # NEW: Check calendar write capability and quota
+    entitlements = current_app.extensions['app_context'].get_service('entitlements_service')
+
+    if not entitlements.has_capability(g.db, g.current_user.id, 'calendar_write'):
+        return jsonify({
+            "error": "capability_required",
+            "message": "Calendar writes require a paid subscription",
+            "upgrade_url": "/billing/upgrade?feature=calendar_write",
+            "recommended_tier": "starter"
+        }), 403
+
+    quota_check = entitlements.check_quota(g.db, g.current_user.id, 'calendar_writes', 1)
+    if not quota_check.allowed:
+        return jsonify({
+            "error": "quota_exceeded",
+            "message": f"Monthly calendar write limit reached ({quota_check.limit} events)",
+            "remaining": quota_check.remaining,
+            "reset_date": quota_check.reset_date.isoformat(),
+            "upgrade_options": quota_check.upgrade_options,
+            "credit_pack_url": "/billing/credits?type=calendar_writes" if quota_check.credit_pack_available else None
+        }), 429
+
     try:
         data = EventCreateIn(**request.get_json())
-        current_app.extensions['app_context'].get_service('event_service').write_scheduled_event(g.current_user.id,
-                                                                                                 g.db, data.calendar_id,
-                                                                                                 data.event)
+        current_app.extensions['app_context'].get_service('event_service').write_scheduled_event(
+            g.current_user.id, g.db, data.calendar_id, data.event
+        )
+
+        # NEW: Increment usage after successful writing
+        success, error = entitlements.increment_usage(g.db, g.current_user.id, 'calendar_writes', 1)
+        if not success:
+            # Log but don't fail the request since write already succeeded
+            current_app.extensions['app_context'].get_service('logging_service').error(
+                f"Failed to increment calendar write usage: {error}",
+                user_id=g.current_user.id
+            )
+
         return jsonify(EventCreateOut(message="Event written to iCloud.").model_dump()), 200
     except PydanticValidationError as e:
         return make_handled_error_response(DataValidationError, str(e), 400)
@@ -161,12 +193,44 @@ def get_available_time_blocks():
 @csrf_protected
 @limiter.limit(limit("20 per minute"))
 def schedule_blocks():
+
+    entitlements = current_app.extensions['app_context'].get_service('entitlements_service')
+
+    if not entitlements.has_capability(g.db, g.current_user.id, 'calendar_write'):
+        return jsonify({
+            "error": "capability_required",
+            "message": "Calendar writes require a paid subscription",
+            "upgrade_url": "/billing/upgrade?feature=calendar_write",
+            "recommended_tier": "starter"
+        }), 403
+
     try:
         data = ScheduleBlocksIn(**request.get_json())
-        current_app.extensions['app_context'].get_service('event_service').write_scheduled_blocks(g.current_user.id,
-                                                                                                  g.db,
-                                                                                                  data.calendar_id,
-                                                                                                  data.events)
+        event_count = len(data.events)
+
+        quota_check = entitlements.check_quota(g.db, g.current_user.id, 'calendar_writes', event_count)
+        if not quota_check.allowed:
+            return jsonify({
+                "error": "quota_exceeded",
+                "message": f"Not enough quota to write {event_count} events (remaining: {quota_check.remaining})",
+                "remaining": quota_check.remaining,
+                "reset_date": quota_check.reset_date.isoformat(),
+                "upgrade_options": quota_check.upgrade_options,
+                "credit_pack_url": "/billing/credits?type=calendar_writes" if quota_check.credit_pack_available else None
+            }), 429
+
+        current_app.extensions['app_context'].get_service('event_service').write_scheduled_blocks(
+            g.current_user.id, g.db, data.calendar_id, data.events
+        )
+
+        # NEW: Increment usage
+        success, error = entitlements.increment_usage(g.db, g.current_user.id, 'calendar_writes', event_count)
+        if not success:
+            current_app.extensions['app_context'].get_service('logging_service').error(
+                f"Failed to increment calendar write usage: {error}",
+                user_id=g.current_user.id
+            )
+
         return jsonify(ScheduleBlocksOut(message="Events written to iCloud.").model_dump()), 200
     except PydanticValidationError as e:
         return make_handled_error_response(DataValidationError, str(e), 400)
@@ -174,5 +238,3 @@ def schedule_blocks():
         return make_handled_error_response(CalendarError, str(e), 500)
     except (DatabaseError, ServiceUnavailableError) as e:
         return make_handled_error_response(e, str(e), 500)
-    except (ValueError, TypeError) as e:
-        return make_handled_error_response(DataValidationError, str(e), 400)

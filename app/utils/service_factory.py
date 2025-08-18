@@ -7,6 +7,8 @@ from app.auth.email_verification.repository import TokenRepository
 from app.auth.email_verification.service import EmailVerificationService
 from app.auth.session_manager.repository import UserRepository
 from app.auth.session_manager.service import AuthenticationService
+from app.entitlements.repositories.repository import EntitlementsRepository
+from app.entitlements.services.entitlements_service import EntitlementsService
 from app.features.repositories.repository import FeaturesRepository, AIDataRepository
 from app.features.services.ai_data_service import AIDataService
 from app.features.services.service import FeaturesService
@@ -63,15 +65,24 @@ class ServiceFactory:
             logger.error(f"Failed to initialize CachingService: {str(e)}")
             raise
 
-        # Initialize user services first
+        # Initialize entitlements service
         try:
-            user_services = ServiceFactory._init_user_services(caching_service, logging_service)
+            entitlements_repo = EntitlementsRepository()
+            entitlements_service = EntitlementsService(entitlements_repo, caching_service, logging_service)
+            logger.info("EntitlementsService initialized")
+        except Exception as e:
+            logger.error(f"Failed to initialize EntitlementsService: {str(e)}")
+            raise
+
+        # Initialize user services
+        try:
+            user_services = ServiceFactory._init_user_services(caching_service, logging_service, entitlements_service)
             logger.info("User services initialized")
         except Exception as e:
             logger.error(f"Failed to initialize user services: {str(e)}")
             raise
 
-        # Initialize auth services, passing features_service
+        # Initialize auth services
         try:
             auth_services = ServiceFactory._init_auth_services(caching_service, user_services['features_service'])
             logger.info("Auth services initialized")
@@ -198,9 +209,9 @@ class ServiceFactory:
             **user_services,
             **scheduling_services,
             'mapping_engine': mapping_engine,
-            # NEW: Added page_extraction_engine to services
             'page_extraction_engine': page_extraction_engine,
-            'logging_service': logging_service
+            'logging_service': logging_service,
+            'entitlements_service': entitlements_service
         }
 
         # Verify caching_service is registered
@@ -254,14 +265,14 @@ class ServiceFactory:
         }
 
     @staticmethod
-    def _init_user_services(caching_service: ICacheService, logging_service: LoggingService):
+    def _init_user_services(caching_service: ICacheService, logging_service: LoggingService, entitlements_service: EntitlementsService):
         """Initialize user-related services."""
         preferences_repo = PreferencesRepository()
         preferences_service = PreferencesService(preferences_repo, caching_service)
         subscriptions_repo = SubscriptionsRepository()
         subscriptions_service = SubscriptionsService(subscriptions_repo, caching_service)
         features_repo = FeaturesRepository(logging_service)
-        features_service = FeaturesService(features_repo, caching_service, subscriptions_service, logging_service)
+        features_service = FeaturesService(features_repo, caching_service, entitlements_service, logging_service)
         return {
             'preferences_service': preferences_service,
             'subscriptions_service': subscriptions_service,

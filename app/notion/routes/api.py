@@ -1,7 +1,7 @@
 # app/notion/routes/api.py
 from typing import Type
 
-from flask import Blueprint, request, jsonify, g, current_app
+from flask import Blueprint, request, jsonify, g, current_app, make_response
 from pydantic import ValidationError as PydanticValidationError
 
 from app.extensions import limit, limiter
@@ -93,6 +93,21 @@ from flask import Response
 @csrf_protected
 @limiter.limit(limit("2 per minute"))
 def generate() -> Response:
+    entitlements = current_app.extensions['app_context'].get_service('entitlements_service')
+
+    quota_check = entitlements.check_quota(g.db, g.current_user.id, 'ai_generations', 1)
+    if not quota_check.allowed:
+        response_body = {
+            "error": "quota_exceeded",
+            "message": f"Monthly AI generation limit reached ({quota_check.limit} generations)",
+            "remaining": quota_check.remaining,
+            "reset_date": quota_check.reset_date.isoformat(),
+            "upgrade_options": quota_check.upgrade_options,
+            "credit_pack_url": "/billing/credits?type=ai_generations" if quota_check.credit_pack_available else None
+        }
+
+        return make_response(jsonify(response_body), 429)
+
     data = request.json
     database_id = data.get("database_id")
 
@@ -142,6 +157,14 @@ def generate() -> Response:
         task_candidates = current_app.extensions['app_context'].get_service('mapping_service').save_task_candidates(
             g.db, task_candidate_data)
 
+        # NEW: Increment usage after successful generation
+        success, error = entitlements.increment_usage(g.db, g.current_user.id, 'ai_generations', 1)
+        if not success:
+            current_app.extensions['app_context'].get_service('logging_service').error(
+                f"Failed to increment AI generation usage: {error}",
+                user_id=g.current_user.id
+            )
+
         return jsonify([
             TaskCandidateOut.model_validate(c).model_dump(mode="json")
             for c in task_candidates
@@ -156,7 +179,6 @@ def generate() -> Response:
         return make_handled_error_response(ServiceUnavailableError, str(e), 500)
     except Exception as e:
         return make_handled_error_response(ServiceUnavailableError, str(e), 500)
-
 
 @bp.route("/databases", methods=["GET"])
 @verify_jwt
@@ -272,12 +294,27 @@ def preview_mapping():
         return jsonify(format_error_response(e, 500))
 
 
-# NEW: Added endpoint for page-based candidate generation, mirroring database flow but for pages
 @bp.route("/pages/generate-candidates", methods=["POST"])
 @verify_jwt
 @csrf_protected
 @limiter.limit(limit("2 per minute"))
 def generate_from_page() -> Response:
+
+    entitlements = current_app.extensions['app_context'].get_service('entitlements_service')
+
+    quota_check = entitlements.check_quota(g.db, g.current_user.id, 'ai_generations', 1)
+    if not quota_check.allowed:
+        response_body = {
+            "error": "quota_exceeded",
+            "message": f"Monthly AI generation limit reached ({quota_check.limit} generations)",
+            "remaining": quota_check.remaining,
+            "reset_date": quota_check.reset_date.isoformat(),
+            "upgrade_options": quota_check.upgrade_options,
+            "credit_pack_url": "/billing/credits?type=ai_generations" if quota_check.credit_pack_available else None
+        }
+
+        return make_response(jsonify(response_body), 429)
+
     data = request.json
     page_id = data.get("page_id")
     if not page_id:

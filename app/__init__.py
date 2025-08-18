@@ -17,6 +17,7 @@ from app.notion.routes.api import bp as notion_bp
 from app.scheduling.routes.api import bp as scheduling_bp
 from app.subscriptions.routes.api import bp as subscriptions_bp
 from app.user_preferences.routes.api import bp as user_bp
+from app.entitlements.routes.api import bp as entitlements_bp  # NEW
 from app.utils.app_context import AppContext
 from app.utils.exceptions import AuthError, format_error_response
 from app.utils.service_factory import ServiceFactory
@@ -32,8 +33,6 @@ def create_app(config_class=Config):
     session_dir = app.config.get("SESSION_FILE_DIR")
     if session_dir:
         os.makedirs(session_dir, exist_ok=True)
-
-    Session(app)
 
     Session(app)
 
@@ -88,6 +87,7 @@ def create_app(config_class=Config):
     app.register_blueprint(scheduling_bp)
     app.register_blueprint(subscriptions_bp)
     app.register_blueprint(features_bp)
+    app.register_blueprint(entitlements_bp)  # NEW
 
     @app.route("/__test_auth_error")
     def test_auth_error():

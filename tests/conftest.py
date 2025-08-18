@@ -2,6 +2,9 @@
 import logging
 import os
 import uuid
+from datetime import timezone, datetime
+from types import SimpleNamespace
+from unittest.mock import Mock
 
 import psycopg2
 import pytest
@@ -111,6 +114,7 @@ def clean_database(app):
             import app.user_preferences.models.entities
             import app.icloud.models.entities
             import app.notion.smart_mapping.models
+            import app.entitlements.models.entities
             db.session.remove()
             db.drop_all()
             db.create_all()
@@ -259,3 +263,22 @@ def encryptor(app):
     with app.app_context():
         encryptor = app.extensions['app_context'].get_service('encryptor')
         yield encryptor
+
+
+@pytest.fixture
+def allow_calendar_writes(app):
+    entitlements = Mock()
+    entitlements.has_capability.return_value = True
+    entitlements.check_quota.return_value = SimpleNamespace(
+        allowed=True,
+        limit=999,
+        remaining=998,
+        reset_date=datetime.now(timezone.utc),
+        upgrade_options=[],
+        credit_pack_available=False,
+    )
+    entitlements.increment_usage.return_value = (True, None)
+
+    with app.app_context():
+        app.extensions['app_context'].set_service('entitlements_service', entitlements)
+        yield entitlements

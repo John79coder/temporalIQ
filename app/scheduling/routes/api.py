@@ -34,6 +34,20 @@ bp = Blueprint("scheduling", __name__, url_prefix="/scheduling")
 @bp.route("/preview", methods=["POST"])
 def preview_schedule():
     """Generate a preview of time blocks for scheduling."""
+    # NEW: Check AI generation quota for time block generation
+    entitlements = current_app.extensions['app_context'].get_service('entitlements_service')
+
+    quota_check = entitlements.check_quota(g.db, g.current_user.id, 'ai_generations', 1)
+    if not quota_check.allowed:
+        return jsonify({
+            "error": "quota_exceeded",
+            "message": f"Monthly AI generation limit reached ({quota_check.limit} generations)",
+            "remaining": quota_check.remaining,
+            "reset_date": quota_check.reset_date.isoformat(),
+            "upgrade_options": quota_check.upgrade_options,
+            "credit_pack_url": "/billing/credits?type=ai_generations" if quota_check.credit_pack_available else None
+        }), 429
+
     try:
         json_data = request.get_json()
         schedule_preview_input = SchedulePreviewIn(**json_data)
@@ -41,6 +55,7 @@ def preview_schedule():
         logging_service = current_app.extensions['app_context'].get_service('logging_service')
         logging_service.error("Invalid input for schedule preview", user_id=None, extra={"error": str(e)})
         return make_handled_error_response(DataValidationError, str(e), 400)
+
     try:
         time_blocks = current_app.extensions['app_context'].get_service('time_block_generator').generate_time_blocks(
             schedule_preview_input.user_id,
@@ -52,6 +67,15 @@ def preview_schedule():
             schedule_preview_input.earliest_time,
             schedule_preview_input.latest_time
         )
+
+        # NEW: Increment usage after successful generation
+        success, error = entitlements.increment_usage(g.db, g.current_user.id, 'ai_generations', 1)
+        if not success:
+            current_app.extensions['app_context'].get_service('logging_service').error(
+                f"Failed to increment AI generation usage: {error}",
+                user_id=g.current_user.id
+            )
+
         return jsonify(
             {"time_blocks": [TimeBlockOut.model_validate(tb).model_dump(mode="json") for tb in time_blocks]}
         )
@@ -65,7 +89,6 @@ def preview_schedule():
         logging_service.error("Unexpected error in schedule preview", user_id=schedule_preview_input.user_id,
                               extra={"error": str(e)})
         return make_handled_error_response(AppError, str(e), 500)
-
 
 @bp.route("/confirm", methods=["POST"])
 @verify_jwt

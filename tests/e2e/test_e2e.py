@@ -22,7 +22,7 @@ from app.utils.time_zone import TimeZone
 @patch("app.utils.encryption.Encryptor.encrypt", return_value="test-encrypted")
 @patch("app.utils.time_zone.TimeZone.utc_now", return_value=datetime(2025, 7, 18, tzinfo=pytz.UTC))  # Make 07-19 "future"
 def test_full_user_flow_mapping_to_calendar_write(
-        mock_utc_now,  # New patch for utc_now
+        mock_utc_now,
         mock_encrypt,
         mock_list_calendars,
         mock_caldav_init,
@@ -68,20 +68,6 @@ def test_full_user_flow_mapping_to_calendar_write(
         time_zone="UTC"
     )
     db_session.add(preferences)
-
-    with patch("app.features.services.service.SubscriptionsService.is_premium", return_value=True):
-        features_service.update_settings(db_session, user_id, AISettingsUpdate(
-            use_llm_mapping=False,
-            use_learned_detector=False,
-            use_spacy_heuristics=False,
-            use_embedding_similarity=False,
-            use_ml_prioritization=False,
-            use_nlp_urgency=False,
-            use_rl_optimization=False,
-            urgency_learning_scope='off',
-            duration_learning_scope='off',
-            mapping_learning_scope='off',
-            slot_ranking_learning_scope='off'))
 
     with app.app_context():
         # Step 1: Connect to Notion
@@ -172,20 +158,6 @@ def test_api_schedule_preview_time_blocks(authorized_client, db_session, app, te
         time_zone="UTC"
     )
     db_session.add(preferences)
-
-    with patch("app.features.services.service.SubscriptionsService.is_premium", return_value=True):
-        features_service.update_settings(db_session, user_id, AISettingsUpdate(
-            use_llm_mapping=False,
-            use_learned_detector=False,
-            use_spacy_heuristics=False,
-            use_embedding_similarity=False,
-            use_ml_prioritization=False,
-            use_nlp_urgency=False,
-            use_rl_optimization=False,
-            urgency_learning_scope='off',
-            duration_learning_scope='off',
-            mapping_learning_scope='off',
-            slot_ranking_learning_scope='off'))
 
     ###################################The records are already in the db... Use an appropriate Service and update.
 

@@ -5,18 +5,18 @@ from sqlalchemy.orm import Session
 from app.features.models.entities import UserAISettings
 from app.features.models.schemas import AISettingsUpdate
 from app.features.repositories.repository import FeaturesRepository
-from app.subscriptions.services.service import SubscriptionsService
+from app.entitlements.services.entitlements_service import EntitlementsService  # UPDATED
 from app.utils.caching import ICacheService
-from app.utils.exceptions import DatabaseError, wrap_external_error
+from app.utils.exceptions import DatabaseError, wrap_external_error, AuthError  # UPDATED
 from app.utils.logging_service import LoggingService
 
 
 class FeaturesService:
     def __init__(self, repo: FeaturesRepository, caching_service: ICacheService,
-                 subscriptions_service: SubscriptionsService, logging_service: LoggingService):
+                 entitlements_service: EntitlementsService, logging_service: LoggingService):  # UPDATED
         self.repo = repo
         self.caching_service = caching_service
-        self.subscriptions_service = subscriptions_service
+        self.entitlements_service = entitlements_service
         self.logging_service = logging_service
 
     def create_default_settings(self, db: Session, user_id: int) -> UserAISettings:
@@ -41,9 +41,15 @@ class FeaturesService:
             raise wrap_external_error(e, DatabaseError, "Failed to get AI settings") from e
 
     def update_settings(self, db: Session, user_id: int, update_data: AISettingsUpdate) -> UserAISettings:
-        """Update AI settings for a user, checking premium status."""
-        if not self.subscriptions_service.is_premium(db, user_id):
-            raise DatabaseError("Premium subscription required to update AI settings")
+        """Update AI settings for a user, checking tier capabilities."""
+        # UPDATED: Use entitlements service for more granular control
+        tier = self.entitlements_service.get_user_tier(db, user_id)
+
+        # Check if user can modify AI settings based on tier
+        if tier == 'free':
+            # Free users get basic AI but can't customize
+            raise AuthError("Customizing AI settings requires a paid subscription. Upgrade to Starter or higher.")
+
         settings = self.get_settings(db, user_id)
         self._update_fields(settings, update_data)
         try:
@@ -56,7 +62,8 @@ class FeaturesService:
                                        extra={"error": str(e), "update_data": update_data.model_dump()})
             raise wrap_external_error(e, DatabaseError, "Failed to update AI settings") from e
 
-    def _update_fields(self, settings: UserAISettings, update_data: AISettingsUpdate):
+    @staticmethod
+    def _update_fields(settings: UserAISettings, update_data: AISettingsUpdate):
         """Update individual fields of AI settings."""
         if update_data.use_llm_mapping is not None:
             settings.use_llm_mapping = update_data.use_llm_mapping

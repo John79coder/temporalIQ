@@ -1,26 +1,30 @@
 # app/features/services/service.py
+from typing import Dict, Any
 from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.features.models.entities import UserAISettings
-from app.features.models.schemas import AISettingsUpdate
+from app.features.models.schemas import AISettingsUpdate, AISettingsOut
 from app.features.repositories.repository import FeaturesRepository
-from app.entitlements.services.entitlements_service import EntitlementsService  # UPDATED
+from app.features.services.ai_settings_config import AISettingsConfiguration
+from app.entitlements.services.entitlements_service import EntitlementsService
 from app.utils.caching import ICacheService
-from app.utils.exceptions import DatabaseError, wrap_external_error, AuthError  # UPDATED
+from app.utils.exceptions import DatabaseError, wrap_external_error, AuthError
 from app.utils.logging_service import LoggingService
 
 
 class FeaturesService:
     def __init__(self, repo: FeaturesRepository, caching_service: ICacheService,
-                 entitlements_service: EntitlementsService, logging_service: LoggingService):  # UPDATED
+                 entitlements_service: EntitlementsService, logging_service: LoggingService):
         self.repo = repo
         self.caching_service = caching_service
         self.entitlements_service = entitlements_service
         self.logging_service = logging_service
 
     def create_default_settings(self, db: Session, user_id: int) -> UserAISettings:
-        settings = UserAISettings(user_id=user_id)
+        """Create default AI settings for a new user (all enabled, global learning)"""
+        default_values = AISettingsConfiguration.get_default_settings()
+        settings = UserAISettings(user_id=user_id, **default_values)
         return self.repo.create_or_update(db, settings)
 
     def get_settings(self, db: Session, user_id: int) -> UserAISettings:
@@ -32,68 +36,108 @@ class FeaturesService:
         try:
             settings = self.repo.get_by_user(db, user_id)
             if not settings:
-                self.logging_service.error("AI settings not found for user", user_id=user_id)
-                raise DatabaseError("AI settings not found")
+                # Create default settings if none exist
+                self.logging_service.info(f"Creating default AI settings for user {user_id}")
+                settings = self.create_default_settings(db, user_id)
             self._cache_settings(user_id, settings)
             return settings
         except SQLAlchemyError as e:
             self.logging_service.error("Failed to get AI settings", user_id=user_id, extra={"error": str(e)})
             raise wrap_external_error(e, DatabaseError, "Failed to get AI settings") from e
 
-    def update_settings(self, db: Session, user_id: int, update_data: AISettingsUpdate) -> UserAISettings:
-        """Update AI settings for a user, checking tier capabilities."""
-        # UPDATED: Use entitlements service for more granular control
+    def get_settings_with_capabilities(self, db: Session, user_id: int) -> Dict[str, Any]:
+        """Get AI settings along with customization capabilities based on tier"""
+        settings = self.get_settings(db, user_id)
         tier = self.entitlements_service.get_user_tier(db, user_id)
 
-        # Check if user can modify AI settings based on tier
+        capabilities = AISettingsConfiguration.get_tier_capabilities(tier)
+
+        return {
+            'settings': AISettingsOut.model_validate(settings).model_dump(),
+            'tier': tier,
+            'customizable': capabilities,
+            'defaults': AISettingsConfiguration.get_default_settings()
+        }
+
+    def update_settings(self, db: Session, user_id: int, update_data: AISettingsUpdate) -> UserAISettings:
+        """Update AI settings for a user, checking tier capabilities for each setting."""
+        tier = self.entitlements_service.get_user_tier(db, user_id)
+
+        # Check if user can customize AI settings at all
         if tier == 'free':
-            # Free users get basic AI but can't customize
-            raise AuthError("Customizing AI settings requires a paid subscription. Upgrade to Starter or higher.")
+            raise AuthError(
+                "Customizing AI settings requires a paid subscription. "
+                "Upgrade to Starter or higher to customize AI behavior."
+            )
+
+        # Validate each setting being updated
+        errors = []
+        for field, value in update_data.model_dump(exclude_unset=True).items():
+            if value is not None and not AISettingsConfiguration.can_customize_setting(tier, field):
+                required_tier = AISettingsConfiguration.get_required_tier_for_setting(field)
+                setting_config = AISettingsConfiguration.SETTINGS_CONFIG.get(field)
+                display_name = setting_config.display_name if setting_config else field
+                errors.append(f"{display_name} requires {required_tier.title()} tier")
+
+        if errors:
+            raise AuthError(
+                f"Your {tier.title()} plan cannot customize: {', '.join(errors)}. "
+                f"Upgrade to access these advanced AI features."
+            )
 
         settings = self.get_settings(db, user_id)
         self._update_fields(settings, update_data)
+
         try:
             saved = self.repo.create_or_update(db, settings)
-            self.caching_service.delete(f"features:ai_settings:{user_id}")  # Invalidate cache
+            self.caching_service.delete(f"features:ai_settings:{user_id}")
             self._cache_settings(user_id, saved)
+
+            # Log the update for analytics
+            self.logging_service.info(
+                "AI settings updated",
+                user_id=user_id,
+                extra={
+                    'tier': tier,
+                    'updated_fields': list(update_data.model_dump(exclude_unset=True).keys())
+                }
+            )
+
             return saved
         except SQLAlchemyError as e:
             self.logging_service.error("Failed to update AI settings", user_id=user_id,
                                        extra={"error": str(e), "update_data": update_data.model_dump()})
             raise wrap_external_error(e, DatabaseError, "Failed to update AI settings") from e
 
-    @staticmethod
-    def _update_fields(settings: UserAISettings, update_data: AISettingsUpdate):
+    def reset_to_defaults(self, db: Session, user_id: int) -> UserAISettings:
+        """Reset AI settings to defaults"""
+        settings = self.get_settings(db, user_id)
+        default_values = AISettingsConfiguration.get_default_settings()
+
+        for key, value in default_values.items():
+            setattr(settings, key, value)
+
+        try:
+            saved = self.repo.create_or_update(db, settings)
+            self.caching_service.delete(f"features:ai_settings:{user_id}")
+            self._cache_settings(user_id, saved)
+
+            self.logging_service.info("AI settings reset to defaults", user_id=user_id)
+            return saved
+        except SQLAlchemyError as e:
+            self.logging_service.error("Failed to reset AI settings", user_id=user_id, extra={"error": str(e)})
+            raise wrap_external_error(e, DatabaseError, "Failed to reset AI settings") from e
+
+    def _update_fields(self, settings: UserAISettings, update_data: AISettingsUpdate):
         """Update individual fields of AI settings."""
-        if update_data.use_llm_mapping is not None:
-            settings.use_llm_mapping = update_data.use_llm_mapping
-        if update_data.use_learned_detector is not None:
-            settings.use_learned_detector = update_data.use_learned_detector
-        if update_data.use_spacy_heuristics is not None:
-            settings.use_spacy_heuristics = update_data.use_spacy_heuristics
-        if update_data.use_embedding_similarity is not None:
-            settings.use_embedding_similarity = update_data.use_embedding_similarity
-        if update_data.use_ml_prioritization is not None:
-            settings.use_ml_prioritization = update_data.use_ml_prioritization
-        if update_data.use_nlp_urgency is not None:
-            settings.use_nlp_urgency = update_data.use_nlp_urgency
-        if update_data.use_rl_optimization is not None:
-            settings.use_rl_optimization = update_data.use_rl_optimization
-        if update_data.urgency_learning_scope is not None:
-            settings.urgency_learning_scope = update_data.urgency_learning_scope
-        if update_data.duration_learning_scope is not None:
-            settings.duration_learning_scope = update_data.duration_learning_scope
-        if update_data.mapping_learning_scope is not None:
-            settings.mapping_learning_scope = update_data.mapping_learning_scope
-        if update_data.slot_ranking_learning_scope is not None:
-            settings.slot_ranking_learning_scope = update_data.slot_ranking_learning_scope
-        if update_data.use_nlp_scoring is not None:
-            settings.use_nlp_scoring = update_data.use_nlp_scoring
+        for field, value in update_data.model_dump(exclude_unset=True).items():
+            if value is not None:
+                setattr(settings, field, value)
 
     def _cache_settings(self, user_id: int, settings: UserAISettings):
         """Cache AI settings for a user."""
         self.caching_service.set(
             f"features:ai_settings:{user_id}",
             settings.__dict__,
-            timeout=3600  # Reduced to 1 hour
+            timeout=3600  # 1 hour
         )

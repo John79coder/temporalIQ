@@ -1,9 +1,7 @@
 # app/features/models/schemas.py
 from datetime import datetime
 from typing import Optional
-
 from pydantic import BaseModel, field_validator, Field, model_serializer, ConfigDict
-
 from app.utils.time_zone import TimeZone
 
 
@@ -32,6 +30,7 @@ class AISettingsUpdate(BaseModel):
     mapping_learning_scope: Optional[str] = None
     slot_ranking_learning_scope: Optional[str] = None
     use_nlp_scoring: Optional[bool] = None
+    use_ai_page_extraction: Optional[bool] = None
 
     @field_validator("urgency_learning_scope", "duration_learning_scope", "mapping_learning_scope",
                      "slot_ranking_learning_scope")
@@ -56,8 +55,13 @@ class AISettingsOut(BaseOutModel):
     mapping_learning_scope: str
     slot_ranking_learning_scope: str
     use_nlp_scoring: bool
+    use_ai_page_extraction: bool
     created_at: datetime
     updated_at: Optional[datetime]
+
+
+class AISettingsResetRequest(BaseModel):
+    confirm: bool = Field(..., description="Must be true to confirm reset")
 
 
 class AITrainingEventIn(BaseModel):
@@ -99,7 +103,7 @@ class DurationLogLabel(BaseModel):
 
 class SlotChoiceInput(BaseModel):
     slot_start: str
-    urgency: float  # CHANGED: From Optional[str] to float for consistency
+    urgency: float
     duration: float
 
     @field_validator("urgency")

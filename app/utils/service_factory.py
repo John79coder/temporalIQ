@@ -31,8 +31,6 @@ from app.notion.smart_mapping.task_candidate import TaskCandidateBuilder
 from app.scheduling.services.free_time_finder import FreeTimeFinder
 from app.scheduling.services.task_prioritizer import TaskPrioritizer
 from app.scheduling.services.time_block_generator import TimeBlockGenerator
-from app.subscriptions.repositories.repository import SubscriptionsRepository
-from app.subscriptions.services.service import SubscriptionsService
 from app.user_preferences.preferences_store.repository import PreferencesRepository
 from app.user_preferences.preferences_store.service import PreferencesService
 from app.utils.caching import get_cache_service, ICacheService
@@ -65,7 +63,7 @@ class ServiceFactory:
             logger.error(f"Failed to initialize CachingService: {str(e)}")
             raise
 
-        # Initialize entitlements service
+        # Initialize entitlements service early
         try:
             entitlements_repo = EntitlementsRepository()
             entitlements_service = EntitlementsService(entitlements_repo, caching_service, logging_service)
@@ -74,7 +72,7 @@ class ServiceFactory:
             logger.error(f"Failed to initialize EntitlementsService: {str(e)}")
             raise
 
-        # Initialize user services
+        # Initialize user services first
         try:
             user_services = ServiceFactory._init_user_services(caching_service, logging_service, entitlements_service)
             logger.info("User services initialized")
@@ -82,7 +80,7 @@ class ServiceFactory:
             logger.error(f"Failed to initialize user services: {str(e)}")
             raise
 
-        # Initialize auth services
+        # Initialize auth services, passing features_service
         try:
             auth_services = ServiceFactory._init_auth_services(caching_service, user_services['features_service'])
             logger.info("Auth services initialized")
@@ -179,7 +177,7 @@ class ServiceFactory:
             logger.error(f"Failed to initialize mapping engine: {str(e)}")
             raise
 
-        # NEW: Initialize page extraction engine (similar to mapping_engine)
+        # Initialize page extraction engine
         try:
             page_extraction_engine = NotionPageEngine(
                 caching_service,
@@ -193,14 +191,6 @@ class ServiceFactory:
             logger.error(f"Failed to initialize page extraction engine: {str(e)}")
             raise
 
-        # Initialize subscriptions_service Stripe configuration
-        try:
-            user_services['subscriptions_service'].initialize_stripe()
-            logger.info("SubscriptionsService Stripe initialized")
-        except Exception as e:
-            logger.error(f"Failed to initialize SubscriptionsService Stripe: {str(e)}")
-            raise
-
         # Combine all services
         services = {
             **auth_services,
@@ -211,13 +201,9 @@ class ServiceFactory:
             'mapping_engine': mapping_engine,
             'page_extraction_engine': page_extraction_engine,
             'logging_service': logging_service,
-            'entitlements_service': entitlements_service
+            'entitlements_service': entitlements_service,
+            'caching_service': caching_service
         }
-
-        # Verify caching_service is registered
-        if 'caching_service' not in services:
-            services['caching_service'] = caching_service
-            logger.info("CachingService explicitly registered in services")
 
         logger.info("All services initialized successfully")
         return services
@@ -269,12 +255,10 @@ class ServiceFactory:
         """Initialize user-related services."""
         preferences_repo = PreferencesRepository()
         preferences_service = PreferencesService(preferences_repo, caching_service)
-        subscriptions_repo = SubscriptionsRepository()
-        subscriptions_service = SubscriptionsService(subscriptions_repo, caching_service)
         features_repo = FeaturesRepository(logging_service)
+        # Pass entitlements_service instead of subscriptions_service
         features_service = FeaturesService(features_repo, caching_service, entitlements_service, logging_service)
         return {
             'preferences_service': preferences_service,
-            'subscriptions_service': subscriptions_service,
             'features_service': features_service
         }

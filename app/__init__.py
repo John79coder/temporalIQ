@@ -15,7 +15,6 @@ from app.features.routes.api import bp as features_bp
 from app.icloud.routes.api import bp as icloud_bp
 from app.notion.routes.api import bp as notion_bp
 from app.scheduling.routes.api import bp as scheduling_bp
-from app.subscriptions.routes.api import bp as subscriptions_bp
 from app.user_preferences.routes.api import bp as user_bp
 from app.entitlements.routes.api import bp as entitlements_bp  # NEW
 from app.utils.app_context import AppContext
@@ -85,7 +84,6 @@ def create_app(config_class=Config):
     app.register_blueprint(notion_bp)
     app.register_blueprint(icloud_bp)
     app.register_blueprint(scheduling_bp)
-    app.register_blueprint(subscriptions_bp)
     app.register_blueprint(features_bp)
     app.register_blueprint(entitlements_bp)  # NEW
 

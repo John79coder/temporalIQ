@@ -8,13 +8,13 @@ from sqlalchemy.orm import Session
 from transformers import pipeline
 
 from app.features.services.service import FeaturesService
+from app.logging import ApplicationLogger
 from app.notion.models.schemas import PartialCandidate
 from app.notion.smart_mapping.page_value_extractors.base import PageValueExtractor
-from app.utils.logging_service import LoggingService
 
 
 class UrgencyClassifier(PageValueExtractor):
-    def __init__(self, features_service: FeaturesService, logging_service: LoggingService):
+    def __init__(self, features_service: FeaturesService, logging_service: ApplicationLogger):
         self.features_service = features_service
         self.logging_service = logging_service
         self.nlp = None

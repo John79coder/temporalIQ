@@ -1,5 +1,5 @@
 # app/__init__.py
-import logging as python_logging  # Rename to avoid conflict with app.logging module
+import logging as python_logging
 import os
 import uuid
 
@@ -10,6 +10,7 @@ from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
 from flask_session import Session
 
+from app.analytics.routes.api import bp as analytics_bp
 from app.auth.routes.api import bp as auth_bp
 from app.extensions import csrf, mail, limiter, db, cache
 from app.features.routes.api import bp as features_bp
@@ -21,6 +22,7 @@ from app.entitlements.routes.api import bp as entitlements_bp
 from app.utils.app_context import AppContext
 from app.utils.exceptions import AuthError, format_error_response
 from app.utils.service_factory import ServiceFactory
+
 from config import Config
 
 
@@ -135,6 +137,7 @@ def create_app(config_class=Config):
     app.register_blueprint(scheduling_bp)
     app.register_blueprint(features_bp)
     app.register_blueprint(entitlements_bp)
+    app.register_blueprint(analytics_bp)
 
     # Request lifecycle hooks
     @app.before_request

@@ -5,9 +5,9 @@ from sqlalchemy.orm import Session
 from app.entitlements.models.entities import SubscriptionTier, CreditPack
 from app.entitlements.models.schemas import TierLimits, UsageStatus, QuotaCheckResult
 from app.entitlements.repositories.repository import EntitlementsRepository
+from app.logging import ApplicationLogger
 from app.utils.caching import ICacheService
 from app.utils.time_zone import TimeZone
-from app.utils.logging_service import LoggingService
 
 
 class EntitlementsService:
@@ -66,7 +66,7 @@ class EntitlementsService:
     }
 
     def __init__(self, repository: EntitlementsRepository, caching_service: ICacheService,
-                 logging_service: LoggingService):
+                 logging_service: ApplicationLogger):
         self.repository = repository
         self.caching_service = caching_service
         self.logging_service = logging_service

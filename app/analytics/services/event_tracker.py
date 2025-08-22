@@ -1,7 +1,8 @@
 from typing import Optional, Dict, Any
 from datetime import datetime, timedelta
 from app.extensions import db
-from app.analytics.models.entities import UserEvent, EventAggregate
+from app.analytics.models.entities import UserEvent
+from app.logging.services.application_logger import ApplicationLogger
 
 
 class EventTracker:
@@ -97,8 +98,6 @@ class EventTracker:
             db.session.commit()
             self.event_buffer = []
         except Exception as e:
-            # Log error but don't fail the request
-            from app.logging.services.application_logger import ApplicationLogger
             logger = ApplicationLogger()
             logger.error(f"Failed to persist events: {e}", exception=e)
             self.event_buffer = []  # Clear buffer to prevent memory issues

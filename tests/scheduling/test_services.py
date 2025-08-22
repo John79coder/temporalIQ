@@ -21,21 +21,21 @@ def event_service():
 
 
 @pytest.fixture
-def task_prioritizer(caching_service, features_service, preferences_service, ai_data_service, logging_service):
-    return TaskPrioritizer(caching_service, features_service, preferences_service, ai_data_service, logging_service)
+def task_prioritizer(caching_service, features_service, preferences_service, ai_data_service, app_logger):
+    return TaskPrioritizer(caching_service, features_service, preferences_service, ai_data_service, app_logger)
 
 
 @pytest.fixture
-def time_block_generator(caching_service, task_prioritizer, features_service, ai_data_service, logging_service, preferences_service):
+def time_block_generator(caching_service, task_prioritizer, features_service, ai_data_service, app_logger, preferences_service):
     return TimeBlockGenerator(caching_service, None, task_prioritizer, features_service, ai_data_service,
-                              logging_service, preferences_service)
+                              app_logger, preferences_service)
 
 
 @pytest.fixture
 def free_time_finder(caching_service, event_service, features_service, preferences_service, ai_data_service,
-                     logging_service, time_block_generator):
+                     app_logger, time_block_generator):
     ftf = FreeTimeFinder(caching_service, event_service, features_service, preferences_service, ai_data_service,
-                         logging_service, time_block_generator)
+                         app_logger, time_block_generator)
     time_block_generator.free_time_finder = ftf
     return ftf
 

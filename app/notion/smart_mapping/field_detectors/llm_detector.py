@@ -8,14 +8,14 @@ from sqlalchemy.orm.session import Session
 from transformers.integrations import tiktoken
 
 from app.features.services.service import FeaturesService
+from app.logging import ApplicationLogger
 from app.notion.smart_mapping.field_detectors.base import FieldDetector
 from app.notion.smart_mapping.models import FieldMatch
 from app.utils.exceptions import wrap_external_error, ServiceUnavailableError
-from app.utils.logging_service import LoggingService
 
 
 class LLMDetector(FieldDetector):
-    def __init__(self, features_service: FeaturesService, logging_service: LoggingService):
+    def __init__(self, features_service: FeaturesService, logging_service: ApplicationLogger):
         self.features_service = features_service
         self.logging_service = logging_service
         api_key = os.getenv("OPENAI_API_KEY")

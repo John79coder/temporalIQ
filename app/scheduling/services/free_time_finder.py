@@ -19,6 +19,7 @@ from app.features.services.ai_data_service import AIDataService
 from app.features.services.service import FeaturesService
 from app.icloud.models.schemas import TimeBlock
 from app.icloud.services.interfaces import ICalDAVEventService
+from app.logging import ApplicationLogger
 from app.scheduling.models.entities import Task
 from app.scheduling.models.policies import SchedulingPolicy
 from app.scheduling.services.interfaces import IFreeTimeFinder
@@ -26,14 +27,13 @@ from app.scheduling.services.time_block_generator import TimeBlockGenerator
 from app.user_preferences.preferences_store.service import PreferencesService
 from app.utils.caching import ICacheService
 from app.utils.exceptions import CalendarError, DataValidationError, wrap_external_error, DatabaseError
-from app.utils.logging_service import LoggingService
 from config import Config
 
 
 class FreeTimeFinder(IFreeTimeFinder):
     def __init__(self, caching_service: ICacheService, event_service: ICalDAVEventService,
                  features_service: FeaturesService, preferences_service: PreferencesService,
-                 ai_data_service: AIDataService, logging_service: LoggingService,
+                 ai_data_service: AIDataService, logging_service: ApplicationLogger,
                  time_block_generator: TimeBlockGenerator):
         self.caching_service = caching_service
         self.event_service = event_service

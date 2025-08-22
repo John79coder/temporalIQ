@@ -8,14 +8,14 @@ from app.features.models.schemas import AISettingsUpdate, AISettingsOut
 from app.features.repositories.repository import FeaturesRepository
 from app.features.services.ai_settings_config import AISettingsConfiguration
 from app.entitlements.services.entitlements_service import EntitlementsService
+from app.logging import ApplicationLogger
 from app.utils.caching import ICacheService
 from app.utils.exceptions import DatabaseError, wrap_external_error, AuthError
-from app.utils.logging_service import LoggingService
 
 
 class FeaturesService:
     def __init__(self, repo: FeaturesRepository, caching_service: ICacheService,
-                 entitlements_service: EntitlementsService, logging_service: LoggingService):
+                 entitlements_service: EntitlementsService, logging_service: ApplicationLogger):
         self.repo = repo
         self.caching_service = caching_service
         self.entitlements_service = entitlements_service

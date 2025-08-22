@@ -7,6 +7,7 @@ from flask import current_app
 from sqlalchemy.orm import Session
 
 from app.features.services.service import FeaturesService
+from app.logging import ApplicationLogger
 from app.notion.models.schemas import PartialCandidate
 from app.notion.smart_mapping.detector_registry import DetectorRegistry
 from app.notion.smart_mapping.field_detector_aggregator import FieldDetectorAggregator
@@ -24,12 +25,11 @@ from app.notion.smart_mapping.sectionizer import Sectionizer, BlockSection
 from app.notion.smart_mapping.sentence_task_splitter.task_splitter import SentenceSplitter
 from app.user_preferences.preferences_store.service import PreferencesService
 from app.utils.caching import ICacheService
-from app.utils.logging_service import LoggingService
 
 
 class NotionPageEngine:
     def __init__(self, caching_service: ICacheService, features_service: FeaturesService,
-                 preferences_service: PreferencesService, detector_registry: DetectorRegistry, logging_service: LoggingService):
+                 preferences_service: PreferencesService, detector_registry: DetectorRegistry, logging_service: ApplicationLogger):
         self.caching_service = caching_service
         self.features_service = features_service
         self.sectionizer = Sectionizer()

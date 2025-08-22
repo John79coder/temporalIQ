@@ -12,13 +12,13 @@ from app.features.models.entities import AITrainingEvent
 from app.features.models.schemas import SlotChoiceInput, SlotChoiceLabel, DurationLogInput, DurationLogLabel
 from app.features.services.ai_data_service import AIDataService
 from app.icloud.models.schemas import EventWriteRequest
+from app.logging import ApplicationLogger
 from app.scheduling.models.entities import Task
 from app.scheduling.models.schemas import SchedulePreviewIn, TimeBlockOut, ScheduleConfirmIn, TimeBlockIn
 from app.utils.endpoint_utils import verify_jwt, csrf_protected
 from app.utils.exceptions import AppError
 from app.utils.exceptions import DataValidationError, CalendarError, DatabaseError, make_handled_error_response, \
     ServiceUnavailableError, wrap_external_error
-from app.utils.logging_service import LoggingService
 
 
 class RollbackError(DatabaseError):
@@ -130,14 +130,14 @@ def confirm_schedule():
 
 
 @retry(stop=stop_after_attempt(3), wait=wait_exponential(multiplier=1, min=1, max=10))
-def _delete_event_with_retry(client, calendar_id: str, uid: str, logging_service: LoggingService, user_id: int):
+def _delete_event_with_retry(client, calendar_id: str, uid: str, logging_service: ApplicationLogger, user_id: int):
     """Retry deleting an event from iCloud."""
     client.delete_event(calendar_id, uid)
     logging_service.info("Rollback: Deleted event", user_id=user_id, extra={"uid": uid, "calendar_id": calendar_id})
 
 
 def _write_events(db: Session, user_id: int, calendar_id: str, blocks: List[TimeBlockIn], task_map: dict, event_service,
-                  logging_service: LoggingService) -> List[str]:
+                  logging_service: ApplicationLogger) -> List[str]:
     """Write events to iCloud calendar."""
     uids = []
     for block in blocks:
@@ -161,7 +161,7 @@ def _write_events(db: Session, user_id: int, calendar_id: str, blocks: List[Time
 
 
 def _log_training_events(db: Session, user_id: int, blocks: List[TimeBlockIn], task_map: dict,
-                         ai_data_service: AIDataService, logging_service: LoggingService):
+                         ai_data_service: AIDataService, logging_service: ApplicationLogger):
     """Log slot choice and duration events to AI training data."""
     """Log slot choice and duration events to AI training data."""
     from app.scheduling.models.policies import get_urgency_float  # NEW: Import utility
@@ -211,7 +211,7 @@ def _log_training_events(db: Session, user_id: int, blocks: List[TimeBlockIn], t
 
 
 def _rollback_on_failure(db: Session, user_id: int, calendar_id: str, uids: List[str], event_service,
-                         logging_service: LoggingService):
+                         logging_service: ApplicationLogger):
     """Rollback iCloud events on failure."""
     client = event_service.client_manager.get_caldav_client_for_user(db, user_id)
     failed_rollbacks = []

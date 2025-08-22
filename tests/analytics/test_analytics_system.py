@@ -590,35 +590,29 @@ class TestAnalyticsIntegration:
         user, user_id = test_user
 
         with patch('app.notion.auth.service.NotionAuthService.store_access_token'):
-            with patch('app.analytics.services.event_tracker.EventTracker.track_notion_connected') as mock_track:
-                # Simulate Notion connection flow
-                # This would normally be triggered in the Notion service
-                from app.analytics.services.event_tracker import EventTracker
-                tracker = EventTracker()
-                tracker.track_notion_connected(user_id=user_id, database_count=3)
+            from app.analytics.services.event_tracker import EventTracker
+            tracker = EventTracker()
+            tracker.track_notion_connected(user_id=user_id, database_count=3)
 
-                # Verify event was tracked
-                assert len(tracker.event_buffer) == 1
-                assert tracker.event_buffer[0].event_name == "notion_connected"
+            assert len(tracker.event_buffer) == 1
+            assert tracker.event_buffer[0].event_name == "notion_connected"
 
-    def test_analytics_with_task_scheduling(self, authorized_client, db_session, test_user):
-        """Test that task scheduling triggers analytics event"""
+    def test_analytics_with_task_scheduling(self, test_user):
+        from app.analytics.services.event_tracker import EventTracker
         user, user_id = test_user
 
-        with patch('app.scheduling.services.time_block_generator.TimeBlockGenerator.generate_time_blocks'):
-            with patch('app.analytics.services.event_tracker.EventTracker.track_task_scheduled') as mock_track:
-                # Simulate task scheduling
-                from app.analytics.services.event_tracker import EventTracker
-                tracker = EventTracker()
-                tracker.track_task_scheduled(
-                    user_id=user_id,
-                    task_id=100,
-                    calendar_id="primary"
-                )
+        tracker = EventTracker()
+        tracker.track_task_scheduled(
+            user_id=user_id,
+            task_id=123,
+            calendar_id="cal_abc"
+        )
 
-                # Verify event was tracked
-                assert len(tracker.event_buffer) == 1
-                assert tracker.event_buffer[0].properties["task_id"] == 100
+        assert len(tracker.event_buffer) == 1
+        event = tracker.event_buffer[0]
+        assert event.event_name == "task_scheduled"
+        assert event.properties["task_id"] == 123
+        assert event.properties["calendar_id"] == "cal_abc"
 
 
 # Fixtures for analytics tests

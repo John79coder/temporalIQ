@@ -16,20 +16,20 @@ from app.features.models.entities import AITrainingEvent
 from app.features.models.schemas import SlotChoiceInput, SlotChoiceLabel
 from app.features.services.ai_data_service import AIDataService
 from app.features.services.service import FeaturesService
+from app.logging import ApplicationLogger
 from app.scheduling.models.entities import Task
 from app.scheduling.models.policies import get_urgency_float, PRIORITY_TO_WEIGHT  # NEW: Import mappings
 from app.scheduling.services.interfaces import ITaskPrioritizer
 from app.user_preferences.preferences_store.service import PreferencesService
 from app.utils.caching import ICacheService
 from app.utils.exceptions import DataValidationError, wrap_external_error, DatabaseError
-from app.utils.logging_service import LoggingService
 from app.utils.time_zone import TimeZone
 
 
 class TaskPrioritizer(ITaskPrioritizer):
     def __init__(self, caching_service: ICacheService, features_service: FeaturesService,
                  preferences_service: PreferencesService, ai_data_service: AIDataService,
-                 logging_service: LoggingService):
+                 logging_service: ApplicationLogger):
         self.caching_service = caching_service
         self.features_service = features_service
         self.preferences_service = preferences_service

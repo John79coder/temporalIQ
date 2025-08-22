@@ -17,17 +17,17 @@ from app.features.models.entities import AITrainingEvent
 from app.features.models.schemas import MappingFeedbackLabel, MappingFeedbackInput
 from app.features.services.ai_data_service import AIDataService
 from app.features.services.service import FeaturesService
+from app.logging import ApplicationLogger
 from app.notion.mapping_storage.feedback import FeedbackLog
 from app.notion.mapping_storage.feedback import FeedbackRepository
 from app.notion.smart_mapping.field_detectors.base import FieldDetector
 from app.notion.smart_mapping.models import FieldMatch
 from app.utils.exceptions import wrap_external_error, ServiceUnavailableError, DatabaseError
-from app.utils.logging_service import LoggingService
 
 
 class LearnedDetector(FieldDetector):
     def __init__(self, features_service: FeaturesService, ai_data_service: AIDataService,
-                 logging_service: LoggingService):
+                 logging_service: ApplicationLogger):
         self.features_service = features_service
         self.ai_data_service = ai_data_service
         self.logging_service = logging_service

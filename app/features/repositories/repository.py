@@ -5,14 +5,14 @@ from sqlalchemy.exc import SQLAlchemyError
 from sqlalchemy.orm import Session
 
 from app.features.models.entities import UserAISettings, AITrainingEvent
+from app.logging import ApplicationLogger
 from app.repositories.base import AbstractRepository
 from app.utils.exceptions import DatabaseError, wrap_external_error
-from app.utils.logging_service import LoggingService
 from app.utils.time_zone import TimeZone
 
 
 class FeaturesRepository(AbstractRepository):
-    def __init__(self, logging_service: LoggingService):
+    def __init__(self, logging_service: ApplicationLogger):
         self.logging_service = logging_service
 
     def create(self, db: Session, settings: UserAISettings) -> UserAISettings:
@@ -72,7 +72,7 @@ class FeaturesRepository(AbstractRepository):
 
 
 class AIDataRepository(AbstractRepository):
-    def __init__(self, logging_service: LoggingService):
+    def __init__(self, logging_service: ApplicationLogger):
         self.logging_service = logging_service
 
     def log_event(self, db: Session, event: AITrainingEvent) -> None:

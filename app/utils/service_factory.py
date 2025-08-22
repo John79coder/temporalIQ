@@ -35,7 +35,7 @@ from app.user_preferences.preferences_store.repository import PreferencesReposit
 from app.user_preferences.preferences_store.service import PreferencesService
 from app.utils.caching import get_cache_service, ICacheService
 from app.utils.encryption import Encryptor
-from app.utils.logging_service import LoggingService  # Keep old one temporarily for backward compatibility
+
 from app.utils.security import SecurityService
 
 
@@ -52,10 +52,6 @@ class ServiceFactory:
         except Exception as e:
             logger.error(f"Failed to initialize SecurityService: {str(e)}")
             raise
-
-        # Keep old logging service temporarily for backward compatibility
-        old_logging_service = LoggingService()
-        logger.info("Legacy LoggingService initialized")
 
         try:
             caching_service = get_cache_service(cache, security_service)
@@ -228,7 +224,6 @@ class ServiceFactory:
             **enhanced_logging_services,  # Spread the new logging services directly
             'mapping_engine': mapping_engine,
             'page_extraction_engine': page_extraction_engine,
-            'logging_service': old_logging_service,  # Keep for backward compatibility
             'entitlements_service': entitlements_service,
             'caching_service': caching_service,
         }

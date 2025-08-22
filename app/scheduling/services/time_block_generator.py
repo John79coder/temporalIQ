@@ -17,6 +17,7 @@ from app.features.models.entities import AITrainingEvent, UserAISettings
 from app.features.models.schemas import UrgencyFeedbackInput, UrgencyFeedbackLabel
 from app.features.services.ai_data_service import AIDataService
 from app.features.services.service import FeaturesService
+from app.logging import ApplicationLogger
 from app.notion.repositories.repository import TaskCandidateRepository
 from app.notion.smart_mapping.models import TaskCandidateData
 from app.scheduling.models.entities import Task, TimeBlock
@@ -27,14 +28,13 @@ from app.scheduling.services.task_prioritizer import ITaskPrioritizer
 from app.user_preferences.preferences_store.service import PreferencesService
 from app.utils.caching import ICacheService
 from app.utils.exceptions import DatabaseError, wrap_external_error
-from app.utils.logging_service import LoggingService
 from config import Config
 
 
 class TimeBlockGenerator(ITimeBlockGenerator):
     def __init__(self, caching_service: ICacheService, free_time_finder: IFreeTimeFinder,
                  task_prioritizer: ITaskPrioritizer, features_service: FeaturesService, ai_data_service: AIDataService,
-                 logging_service: LoggingService, preferences_service: PreferencesService):
+                 logging_service: ApplicationLogger, preferences_service: PreferencesService):
         self.caching_service = caching_service
         self.free_time_finder = free_time_finder
         self.task_prioritizer = task_prioritizer

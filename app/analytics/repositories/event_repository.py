@@ -82,20 +82,19 @@ class EventRepository:
         """Count events matching criteria"""
         try:
             query = db.query(func.count(UserEvent.id))
-
-            if user_id:
-                query = query.filter(UserEvent.user_id == user_id)
-
+            conditions = []
+            if user_id is not None:
+                conditions.append(UserEvent.user_id == user_id)
             if event_name:
-                query = query.filter(UserEvent.event_name == event_name)
-
-            if start_date:
-                query = query.filter(UserEvent.timestamp >= start_date)
-
-            if end_date:
-                query = query.filter(UserEvent.timestamp <= end_date)
-
+                conditions.append(UserEvent.event_name == event_name)
+            if start_date is not None:
+                conditions.append(UserEvent.timestamp >= start_date)
+            if end_date is not None:
+                conditions.append(UserEvent.timestamp <= end_date)
+            if conditions:
+                query = query.filter(*conditions)
             return query.scalar()
+
 
         except Exception as e:
             raise wrap_external_error(e, DatabaseError, "Failed to count events")

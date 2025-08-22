@@ -6,12 +6,12 @@ from sqlalchemy.orm import Session
 
 from app.features.models.entities import AITrainingEvent
 from app.features.repositories.repository import AIDataRepository
+from app.logging import ApplicationLogger
 from app.utils.exceptions import DatabaseError, wrap_external_error
-from app.utils.logging_service import LoggingService
 
 
 class AIDataService:
-    def __init__(self, repository: AIDataRepository, logging_service: LoggingService):
+    def __init__(self, repository: AIDataRepository, logging_service: ApplicationLogger):
         self.repository = repository
         self.logging_service = logging_service
 

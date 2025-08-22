@@ -1,18 +1,18 @@
 # app/scheduling/services/auto_reschedule_service.py
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import timedelta
 from sqlalchemy.orm import Session
 from celery import Celery
 from app.entitlements.services.entitlements_service import EntitlementsService
+from app.logging import ApplicationLogger
 from app.scheduling.services.time_block_generator import TimeBlockGenerator
-from app.utils.logging_service import LoggingService
 from app.utils.time_zone import TimeZone
 
 
 class AutoRescheduleService:
     def __init__(self, entitlements_service: EntitlementsService,
                  time_block_generator: TimeBlockGenerator,
-                 logging_service: LoggingService):
+                 logging_service: ApplicationLogger):
         self.entitlements_service = entitlements_service
         self.time_block_generator = time_block_generator
         self.logging_service = logging_service

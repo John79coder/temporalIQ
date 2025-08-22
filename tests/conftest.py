@@ -216,12 +216,13 @@ def preferences_service(app):
 
 
 @pytest.fixture
-def logging_service(app):
+def app_logger(app):
+    """Get the new ApplicationLogger service"""
     with app.app_context():
-        logging_service = app.extensions['app_context'].get_service('logging_service')
+        app_logger = app.extensions['app_context'].get_service('app_logger')
         # Log to confirm fixture setup
-        logging_service.info("LoggingService fixture created")
-        yield logging_service
+        app_logger.info("ApplicationLogger fixture created")
+        yield app_logger
 
 
 @pytest.fixture

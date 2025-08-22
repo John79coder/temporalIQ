@@ -35,3 +35,17 @@ class DetectorRegistry:
         self.register_detector(LLMDetector(self.features_service, self.logging_service))
         self.register_detector(LearnedDetector(self.features_service, self.ai_data_service, self.logging_service))
         return self
+
+
+
+from .interfaces import IValueExtractor
+
+class ExtractorRegistry(DetectorRegistry):
+    """
+    Specialized registry for value extractors.
+    Renamed registration method for clarity and to emphasize the distinct role.
+    """
+    def register_extractor(self, extractor: IValueExtractor):
+        if not hasattr(extractor, 'extract'):
+            raise ValueError(f"Object {extractor.__class__.__name__} must implement .extract method")
+        super().register_detector(extractor)  # Reuse storage

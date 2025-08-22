@@ -22,7 +22,7 @@ from app.notion.mapping_storage.repository import MappingRepository
 from app.notion.mapping_storage.service import MappingService
 from app.notion.repositories.repository import NotionAuthRepository
 from app.notion.smart_mapping.candidate_generator import CandidateGenerator
-from app.notion.smart_mapping.detector_registry import DetectorRegistry
+from app.notion.smart_mapping.detector_registry import DetectorRegistry, ExtractorRegistry
 from app.notion.smart_mapping.field_detector_aggregator import FieldDetectorAggregator
 from app.notion.smart_mapping.notion_database_engine import NotionDatabaseEngine
 from app.notion.smart_mapping.notion_page_engine import NotionPageEngine
@@ -37,7 +37,6 @@ from app.utils.caching import get_cache_service, ICacheService
 from app.utils.encryption import Encryptor
 
 from app.utils.security import SecurityService
-
 
 class ServiceFactory:
     @staticmethod
@@ -200,13 +199,15 @@ class ServiceFactory:
             logger.error(f"Failed to initialize mapping engine: {str(e)}")
             raise
 
+        extractor_registry = ExtractorRegistry(features_service, ai_data_service, enhanced_logging_services['app_logger'])
+
         # Initialize page extraction engine
         try:
             page_extraction_engine = NotionPageEngine(
                 caching_service,
                 features_service,
                 user_services['preferences_service'],
-                detector_registry,
+                extractor_registry,
                 enhanced_logging_services['app_logger']
             )
             logger.info("Page extraction engine initialized")

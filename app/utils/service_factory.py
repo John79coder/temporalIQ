@@ -35,7 +35,7 @@ from app.user_preferences.preferences_store.repository import PreferencesReposit
 from app.user_preferences.preferences_store.service import PreferencesService
 from app.utils.caching import get_cache_service, ICacheService
 from app.utils.encryption import Encryptor
-from app.utils.logging_service import LoggingService
+from app.utils.logging_service import LoggingService  # Keep old one temporarily for backward compatibility
 from app.utils.security import SecurityService
 
 
@@ -53,8 +53,9 @@ class ServiceFactory:
             logger.error(f"Failed to initialize SecurityService: {str(e)}")
             raise
 
-        logging_service = LoggingService()
-        logger.info("LoggingService initialized")
+        # Keep old logging service temporarily for backward compatibility
+        old_logging_service = LoggingService()
+        logger.info("Legacy LoggingService initialized")
 
         try:
             caching_service = get_cache_service(cache, security_service)
@@ -63,10 +64,22 @@ class ServiceFactory:
             logger.error(f"Failed to initialize CachingService: {str(e)}")
             raise
 
+        # Initialize new logging and analytics services early
+        try:
+            enhanced_logging_services = ServiceFactory._init_logging_services()
+            logger.info("Enhanced logging and analytics services initialized")
+        except Exception as e:
+            logger.error(f"Failed to initialize enhanced logging services: {str(e)}")
+            raise
+
         # Initialize entitlements service early
         try:
             entitlements_repo = EntitlementsRepository()
-            entitlements_service = EntitlementsService(entitlements_repo, caching_service, logging_service)
+            entitlements_service = EntitlementsService(
+                entitlements_repo,
+                caching_service,
+                enhanced_logging_services['app_logger']  # Use new logger
+            )
             logger.info("EntitlementsService initialized")
         except Exception as e:
             logger.error(f"Failed to initialize EntitlementsService: {str(e)}")
@@ -74,7 +87,11 @@ class ServiceFactory:
 
         # Initialize user services first
         try:
-            user_services = ServiceFactory._init_user_services(caching_service, logging_service, entitlements_service)
+            user_services = ServiceFactory._init_user_services(
+                caching_service,
+                enhanced_logging_services['app_logger'],  # Use new logger
+                entitlements_service
+            )
             logger.info("User services initialized")
         except Exception as e:
             logger.error(f"Failed to initialize user services: {str(e)}")
@@ -82,7 +99,10 @@ class ServiceFactory:
 
         # Initialize auth services, passing features_service
         try:
-            auth_services = ServiceFactory._init_auth_services(caching_service, user_services['features_service'])
+            auth_services = ServiceFactory._init_auth_services(
+                caching_service,
+                user_services['features_service']
+            )
             logger.info("Auth services initialized")
         except Exception as e:
             logger.error(f"Failed to initialize auth services: {str(e)}")
@@ -90,7 +110,10 @@ class ServiceFactory:
 
         # Initialize iCloud services
         try:
-            icloud_services = ServiceFactory._init_icloud_services(caching_service, logging_service)
+            icloud_services = ServiceFactory._init_icloud_services(
+                caching_service,
+                enhanced_logging_services['app_logger']  # Use new logger
+            )
             logger.info("iCloud services initialized")
         except Exception as e:
             logger.error(f"Failed to initialize iCloud services: {str(e)}")
@@ -98,7 +121,10 @@ class ServiceFactory:
 
         # Initialize Notion services
         try:
-            notion_services = ServiceFactory._init_notion_services(caching_service, logging_service)
+            notion_services = ServiceFactory._init_notion_services(
+                caching_service,
+                enhanced_logging_services['app_logger']  # Use new logger
+            )
             logger.info("Notion services initialized")
         except Exception as e:
             logger.error(f"Failed to initialize Notion services: {str(e)}")
@@ -106,8 +132,8 @@ class ServiceFactory:
 
         # Initialize scheduling services
         try:
-            ai_data_repo = AIDataRepository(logging_service)
-            ai_data_service = AIDataService(ai_data_repo, logging_service)
+            ai_data_repo = AIDataRepository(enhanced_logging_services['app_logger'])
+            ai_data_service = AIDataService(ai_data_repo, enhanced_logging_services['app_logger'])
             logger.info("AI data services initialized")
 
             time_block_generator = TimeBlockGenerator(
@@ -116,7 +142,7 @@ class ServiceFactory:
                 None,  # Will be set after TaskPrioritizer initialization
                 user_services['features_service'],
                 ai_data_service,
-                logging_service,
+                enhanced_logging_services['app_logger'],
                 preferences_service=user_services['preferences_service']
             )
 
@@ -125,7 +151,7 @@ class ServiceFactory:
                 user_services['features_service'],
                 user_services['preferences_service'],
                 ai_data_service,
-                logging_service
+                enhanced_logging_services['app_logger']
             )
 
             free_time_finder = FreeTimeFinder(
@@ -134,7 +160,7 @@ class ServiceFactory:
                 user_services['features_service'],
                 user_services['preferences_service'],
                 ai_data_service,
-                logging_service,
+                enhanced_logging_services['app_logger'],
                 time_block_generator
             )
 
@@ -158,7 +184,7 @@ class ServiceFactory:
             detector_registry = DetectorRegistry(
                 features_service,
                 ai_data_service,
-                logging_service
+                enhanced_logging_services['app_logger']
             ).initialize_default_detectors()
 
             detector_aggregator = FieldDetectorAggregator(detector_registry)
@@ -169,7 +195,8 @@ class ServiceFactory:
                 detector_aggregator,
                 CandidateGenerator(
                     caching_service,
-                    TaskCandidateBuilder(user_services['preferences_service'])),
+                    TaskCandidateBuilder(user_services['preferences_service'])
+                ),
                 features_service
             )
             logger.info("Mapping engine initialized")
@@ -184,7 +211,7 @@ class ServiceFactory:
                 features_service,
                 user_services['preferences_service'],
                 detector_registry,
-                logging_service
+                enhanced_logging_services['app_logger']
             )
             logger.info("Page extraction engine initialized")
         except Exception as e:
@@ -198,14 +225,15 @@ class ServiceFactory:
             **notion_services,
             **user_services,
             **scheduling_services,
+            **enhanced_logging_services,  # Spread the new logging services directly
             'mapping_engine': mapping_engine,
             'page_extraction_engine': page_extraction_engine,
-            'logging_service': logging_service,
+            'logging_service': old_logging_service,  # Keep for backward compatibility
             'entitlements_service': entitlements_service,
-            'caching_service': caching_service
+            'caching_service': caching_service,
         }
 
-        logger.info("All services initialized successfully")
+        logger.info(f"All services initialized successfully. Total services: {len(services)}")
         return services
 
     @staticmethod
@@ -221,7 +249,7 @@ class ServiceFactory:
         }
 
     @staticmethod
-    def _init_icloud_services(caching_service: ICacheService, logging_service: LoggingService):
+    def _init_icloud_services(caching_service: ICacheService, app_logger):
         """Initialize iCloud-related services."""
         icloud_repo = ICloudRepository()
         client_manager = CalDAVClientManager(caching_service, icloud_repo)
@@ -234,7 +262,7 @@ class ServiceFactory:
         }
 
     @staticmethod
-    def _init_notion_services(caching_service: ICacheService, logging_service: LoggingService):
+    def _init_notion_services(caching_service: ICacheService, app_logger):
         """Initialize Notion-related services."""
         notion_auth_repo = NotionAuthRepository()
         encryptor = Encryptor()
@@ -251,13 +279,34 @@ class ServiceFactory:
         }
 
     @staticmethod
-    def _init_user_services(caching_service: ICacheService, logging_service: LoggingService, entitlements_service: EntitlementsService):
+    def _init_logging_services():
+        """Initialize enhanced logging and analytics services"""
+        from app.logging.services.application_logger import ApplicationLogger
+        from app.logging.services.audit_logger import AuditLogger
+        from app.analytics.services.event_tracker import EventTracker
+        from app.analytics.services.metrics_aggregator import MetricsAggregator
+
+        # Initialize the services
+        app_logger = ApplicationLogger()
+        audit_logger = AuditLogger()
+        event_tracker = EventTracker()
+        metrics_aggregator = MetricsAggregator()
+
+        return {
+            'app_logger': app_logger,
+            'audit_logger': audit_logger,
+            'event_tracker': event_tracker,
+            'metrics_aggregator': metrics_aggregator
+        }
+
+    @staticmethod
+    def _init_user_services(caching_service: ICacheService, app_logger, entitlements_service: EntitlementsService):
         """Initialize user-related services."""
         preferences_repo = PreferencesRepository()
         preferences_service = PreferencesService(preferences_repo, caching_service)
-        features_repo = FeaturesRepository(logging_service)
+        features_repo = FeaturesRepository(app_logger)  # Use new logger
         # Pass entitlements_service instead of subscriptions_service
-        features_service = FeaturesService(features_repo, caching_service, entitlements_service, logging_service)
+        features_service = FeaturesService(features_repo, caching_service, entitlements_service, app_logger)
         return {
             'preferences_service': preferences_service,
             'features_service': features_service

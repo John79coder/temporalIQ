@@ -156,6 +156,10 @@ class AuditLogger:
             # Extract metadata from kwargs
             metadata = kwargs.pop('metadata', {})
 
+            # Handle explicit None by defaulting to empty dict
+            if metadata is None:
+                metadata = {}
+
             # Add any remaining kwargs to metadata
             for key, value in kwargs.items():
                 if key not in ['ip_address', 'user_agent']:

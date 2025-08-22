@@ -5,7 +5,7 @@ from typing import List
 
 import openai
 from sqlalchemy.orm.session import Session
-from transformers.integrations import tiktoken
+import tiktoken
 
 from app.features.services.service import FeaturesService
 from app.logging import ApplicationLogger

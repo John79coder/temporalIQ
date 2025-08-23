@@ -14,6 +14,7 @@ from passlib.context import CryptContext
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
 
 from app import create_app
+from app.auth.session_manager.service import AuthenticationService
 from app.extensions import db, cache as cache_instance
 from app.utils.service_factory import ServiceFactory
 from config import TestingConfig
@@ -38,8 +39,13 @@ def user_cache():
 def user_factory(db_session, user_cache, authentication_service):
     def create_user():
         if 'user' not in user_cache:
-            user_cache['user'] = authentication_service.create_user(db_session, f"{uuid.uuid4().hex}@example.com",
+
+            user_email = f"{uuid.uuid4().hex}@example.com"
+            user_cache['user'] = authentication_service.create_user(db_session, user_email,
                                                                     DEFAULT_TEST_PASSWORD)
+
+            authentication_service.update_verified(db_session, user_cache['user'].id)
+            db_session.commit()
 
         return user_cache['user']
 

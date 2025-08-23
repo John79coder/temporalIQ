@@ -635,22 +635,6 @@ def db_session(app):
 
 
 @pytest.fixture
-def test_user(db_session, authentication_service):
-    """Create a test user"""
-    from app.auth.models.entities import User
-    import uuid
-
-    email = f"test_{uuid.uuid4().hex}@example.com"
-    user = authentication_service.create_user(
-        db_session,
-        email,
-        "TestPassword123!"
-    )
-    db_session.commit()
-    return user, user.id
-
-
-@pytest.fixture
 def authentication_service(app):
     """Get authentication service"""
     with app.app_context():

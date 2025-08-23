@@ -1,18 +1,26 @@
 # config.py
 import os
 import tempfile
-
+import secrets
 from cryptography.fernet import Fernet
 
+def generate_secure_key():
+    """Generate a cryptographically secure key"""
+    return secrets.token_urlsafe(32)
 
 class Config:
     TESTING = False
-    DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/appdb")
+    DATABASE_URL = os.getenv(
+        "DATABASE_URL",
+        "postgresql://postgres:postgres@localhost:5432/appdb"
+    )
     if os.getenv("TEST_DATABASE_URL") == DATABASE_URL:
         raise ValueError("Production and test database URLs must be distinct")
-    SECRET_KEY = os.getenv("FLASK_SECRET_KEY", Fernet.generate_key().decode())
+
+    # just assign, don't raise here
+    SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
     SQLALCHEMY_DATABASE_URI = DATABASE_URL
-    JWT_SECRET_KEY = os.getenv("JWT_SECRET", "replace-me-in-prod")
+    JWT_SECRET_KEY = os.getenv("JWT_SECRET")
     JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
     JWT_EXP_HOURS = int(os.getenv("JWT_EXP_HOURS", "24"))
     SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
@@ -25,12 +33,11 @@ class Config:
     DEFAULT_BLOCK_MINUTES = int(os.getenv("DEFAULT_BLOCK_MINUTES", "30"))
     DEFAULT_MAX_BLOCKS_PER_DAY = int(os.getenv("DEFAULT_MAX_BLOCKS_PER_DAY", "16"))
     INCLUDE_WEEKENDS = bool(int(os.getenv("INCLUDE_WEEKENDS", "0")))
-    ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", Fernet.generate_key().decode())
+    ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY")
     STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
     STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
 
-
-    # NEW: Stripe price IDs for tiered pricing
+    # Stripe price IDs for tiered pricing
     STRIPE_PRICE_STARTER_MONTHLY = os.getenv("STRIPE_PRICE_STARTER_MONTHLY", "price_starter_monthly")
     STRIPE_PRICE_STARTER_ANNUAL = os.getenv("STRIPE_PRICE_STARTER_ANNUAL", "price_starter_annual")
     STRIPE_PRICE_PRO_MONTHLY = os.getenv("STRIPE_PRICE_PRO_MONTHLY", "price_pro_monthly")
@@ -38,28 +45,27 @@ class Config:
     STRIPE_PRICE_BUSINESS_MONTHLY = os.getenv("STRIPE_PRICE_BUSINESS_MONTHLY", "price_business_monthly")
     STRIPE_PRICE_BUSINESS_ANNUAL = os.getenv("STRIPE_PRICE_BUSINESS_ANNUAL", "price_business_annual")
 
-    # NEW: Frontend URLs for upgrade flows
     FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://localhost:3000")
-
-
     MODEL_DIR = os.getenv("MODEL_DIR", "ai_models_cache")
-
     SESSION_TYPE = "filesystem"
     SESSION_FILE_DIR = os.path.join(tempfile.gettempdir(), "flask_session")
     SESSION_PERMANENT = False
-
     PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
     LOG_FILE_PATH = os.path.join(PROJECT_ROOT, 'log.txt')
+
 
 class TestingConfig(Config):
     TESTING = True
     WTF_CSRF_ENABLED = True
-    SQLALCHEMY_DATABASE_URI = os.getenv("TEST_DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/testdb")
+    SQLALCHEMY_DATABASE_URI = os.getenv(
+        "TEST_DATABASE_URL",
+        "postgresql://postgres:postgres@localhost:5432/testdb"
+    )
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     JWT_SECRET_KEY = "test-secret"
     JWT_ALGORITHM = "HS256"
     JWT_TOKEN_LOCATION = ["headers"]
-    SECRET_KEY = os.getenv("FLASK_SECRET_KEY", Fernet.generate_key().decode())
+    SECRET_KEY = Fernet.generate_key().decode()
     RATELIMIT_STORAGE_URI = "memory://"
     ENCRYPTION_KEY = Fernet.generate_key().decode()
     DEBUG = False
@@ -72,4 +78,15 @@ class TestingConfig(Config):
     STRIPE_WEBHOOK_SECRET = "whsec_test_..."
     STRIPE_PRICE_ID_PREMIUM = "price_test_..."
     MODEL_DIR = os.getenv("MODEL_DIR", "ai_models_cache_for_testing")
-    SESSION_TYPE = "filesystem"  # Add this line
+    SESSION_TYPE = "filesystem"
+
+
+def validate_config(cfg):
+    """Fail fast only when not testing"""
+    if not cfg.TESTING:
+        if not cfg.SECRET_KEY:
+            raise ValueError("FLASK_SECRET_KEY must be set in non-testing environments")
+        if not cfg.JWT_SECRET_KEY:
+            raise ValueError("JWT_SECRET_KEY must be set in non-testing environments")
+        if not cfg.ENCRYPTION_KEY:
+            raise ValueError("ENCRYPTION_KEY must be set in non-testing environments")

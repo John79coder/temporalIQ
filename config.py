@@ -1,4 +1,9 @@
 # config.py
+from dotenv import load_dotenv
+from pathlib import Path
+
+load_dotenv(Path(__file__).resolve().parent / ".env")
+
 import os
 import tempfile
 import secrets
@@ -17,7 +22,22 @@ class Config:
     if os.getenv("TEST_DATABASE_URL") == DATABASE_URL:
         raise ValueError("Production and test database URLs must be distinct")
 
-    # just assign, don't raise here
+
+    # Complete Mail Server Configuration
+    MAIL_SERVER = os.getenv("MAIL_SERVER", "smtp.gmail.com")
+    MAIL_PORT = int(os.getenv("MAIL_PORT", 587))
+    MAIL_USE_TLS = os.getenv("MAIL_USE_TLS", "true").lower() == "true"
+    MAIL_USE_SSL = os.getenv("MAIL_USE_SSL", "false").lower() == "true"
+    MAIL_USERNAME = os.getenv("MAIL_USERNAME")
+    MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
+
+    # CORS Configuration
+    CORS_ORIGINS = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:5173").split(",")
+    CORS_ALLOW_CREDENTIALS = True
+    CORS_ALLOW_HEADERS = ["Content-Type", "Authorization", "X-CSRF-Token"]
+    CORS_METHODS = ["GET", "POST", "PUT", "DELETE", "OPTIONS"]
+
+
     SECRET_KEY = os.getenv("FLASK_SECRET_KEY")
     SQLALCHEMY_DATABASE_URI = DATABASE_URL
     JWT_SECRET_KEY = os.getenv("JWT_SECRET")

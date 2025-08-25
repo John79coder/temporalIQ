@@ -3,6 +3,8 @@ import logging as python_logging
 import os
 import uuid
 
+from flask_cors import CORS
+
 import click
 from flask import Flask, g, jsonify, request
 from flask.cli import with_appcontext
@@ -37,6 +39,18 @@ def create_app(config_class=Config):
         os.makedirs(session_dir, exist_ok=True)
 
     Session(app)
+
+    # Configure CORS for frontend access
+    CORS(app,
+         origins=[
+             "http://localhost:3000",  # Development frontend
+             "http://localhost:5173",  # Vite default port
+             app.config.get('FRONTEND_BASE_URL', 'http://localhost:3000')
+         ],
+         supports_credentials=True,
+         allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"],
+         methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+         expose_headers=["Content-Type", "Authorization"])
 
     # Configure standard Python logging (using renamed import)
     log_file = os.path.join(os.path.dirname(__file__), 'app.log')

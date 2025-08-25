@@ -1,4 +1,5 @@
 # app/scripts/init_db.py
+
 import logging
 import os
 import sys

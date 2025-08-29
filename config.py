@@ -5,6 +5,9 @@ from pathlib import Path
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
 import os
+
+print(f"SECRET_KEY from env: {os.getenv('FLASK_SECRET_KEY')}")
+
 import tempfile
 import secrets
 from cryptography.fernet import Fernet

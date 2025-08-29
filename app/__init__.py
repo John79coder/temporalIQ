@@ -2,6 +2,8 @@
 import logging as python_logging
 import os
 import uuid
+import tempfile
+from datetime import timedelta
 
 from flask_cors import CORS
 
@@ -11,6 +13,8 @@ from flask.cli import with_appcontext
 from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
 from flask_session import Session
+from redis import Redis
+import redis
 
 from app.analytics.routes.api import bp as analytics_bp
 from app.auth.routes.api import bp as auth_bp
@@ -31,16 +35,77 @@ from config import Config
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
-    app.config["SESSION_TYPE"] = "filesystem" if config_class.TESTING else "redis"
-    app.config["SESSION_REDIS"] = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
+    # Session configuration
+    if not config_class.TESTING:
+        app.config["SESSION_TYPE"] = "redis"
+        # Create Redis instance, not string
+        app.config["SESSION_REDIS"] = Redis.from_url(
+            os.getenv("REDIS_URL", "redis://localhost:6379/0")
+        )
+
+        # Security settings for production
+        # Only enable HTTPS-only cookies if we're actually using HTTPS
+        is_https = os.getenv("FLASK_ENV") == "production" and os.getenv("USE_HTTPS", "false").lower() == "true"
+        app.config["SESSION_COOKIE_SECURE"] = is_https
+        app.config["WTF_CSRF_TIME_LIMIT"] = 3600  # 1 hour expiry
+        app.config["WTF_CSRF_HEADERS"] = ["X-CSRF-Token", "X-CSRFToken"]
+    else:
+        app.config["SESSION_TYPE"] = "filesystem"
+        app.config["SESSION_FILE_DIR"] = os.path.join(tempfile.gettempdir(), "flask_session")
+        app.config["SESSION_COOKIE_SECURE"] = False
+
+    # Common session configuration
+    app.config["SESSION_COOKIE_DOMAIN"] = None
+    app.config["SESSION_PERMANENT"] = True
+    app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=1)
+    app.config["SESSION_USE_SIGNER"] = True
+    app.config["SESSION_KEY_PREFIX"] = "myapp:"
+    app.config["SESSION_COOKIE_NAME"] = "session"
+    app.config["SESSION_COOKIE_HTTPONLY"] = True
+    app.config["SESSION_COOKIE_SAMESITE"] = None
+    app.config["SESSION_COOKIE_SECURE"] = False  # Only for development; set to True in production with HTTPS
+
+    # Only use msgpack if available
+    try:
+        import msgpack
+        app.config["SESSION_SERIALIZATION_FORMAT"] = "msgpack"
+    except ImportError:
+        app.config["SESSION_SERIALIZATION_FORMAT"] = "json"
+        python_logging.warning("msgpack not installed, falling back to JSON serialization")
+
+    app.config["SESSION_ID_LENGTH"] = 32  # Adequate entropy
+
+    # Create session directory if needed
     session_dir = app.config.get("SESSION_FILE_DIR")
     if session_dir:
         os.makedirs(session_dir, exist_ok=True)
 
     Session(app)
 
-    # Configure CORS for frontend access
+
+    print("=== SESSION RUNTIME DIAG ===")
+    print("Session interface:", type(app.session_interface).__name__)
+    r = app.config.get("SESSION_REDIS")
+    print("SESSION_REDIS client:", r)
+    try:
+        print("SESSION_REDIS kwargs:", getattr(r.connection_pool, "connection_kwargs", {}))
+    except Exception as e:
+        print("SESSION_REDIS kwargs: <error>", repr(e))
+    try:
+        r.ping()
+        print("SESSION_REDIS ping: OK")
+    except Exception as e:
+        print("SESSION_REDIS ping: FAIL ->", repr(e))
+    print("SESSION_KEY_PREFIX:", app.config.get("SESSION_KEY_PREFIX"))
+    print("===========================")
+
+
+    print(f"SESSION_TYPE: {app.config['SESSION_TYPE']}")
+    print(f"SESSION_REDIS: {app.config.get('SESSION_REDIS')}")
+    print(f"SECRET_KEY set: {app.config['SECRET_KEY'] is not None}")
+
+    # Configure CORS for frontend access - FIXED: Added X-Request-ID to allowed headers
     CORS(app,
          origins=[
              "http://localhost:3000",  # Development frontend
@@ -48,9 +113,19 @@ def create_app(config_class=Config):
              app.config.get('FRONTEND_BASE_URL', 'http://localhost:3000')
          ],
          supports_credentials=True,
-         allow_headers=["Content-Type", "Authorization", "X-CSRF-Token"],
+         allow_headers=[
+             "Content-Type",
+             "Authorization",
+             "X-CSRF-Token",
+             "X-CSRFToken",
+             "X-Request-ID"  # ADDED: Allow request tracking header
+         ],
          methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-         expose_headers=["Content-Type", "Authorization"])
+         expose_headers=[
+             "Content-Type",
+             "Authorization",
+             "X-Request-ID"  # ADDED: Also expose for response tracking
+         ])
 
     # Configure standard Python logging (using renamed import)
     log_file = os.path.join(os.path.dirname(__file__), 'app.log')
@@ -77,6 +152,29 @@ def create_app(config_class=Config):
 
     # Initialize Flask extensions
     csrf.init_app(app)
+
+    # app/__init__.py  (inside create_app, after csrf.init_app(app), near other error handlers)
+    from flask_wtf.csrf import CSRFError
+
+    # still inside create_app, same handler you added
+    from flask_wtf.csrf import CSRFError
+
+    @app.errorhandler(CSRFError)
+    def handle_csrf_error(e):
+        from flask import request, jsonify, session
+        if hasattr(current_app, 'logger_instance'):
+            current_app.logger_instance.debug(f"CSRF Error Details - Request Cookies: {request.cookies}")
+            current_app.logger_instance.debug(f"CSRF Error Details - Session Keys: {list(session.keys())}")
+        return jsonify({
+            "error": "CSRFError",
+            "reason": e.description,
+            "have_header": bool(request.headers.get("X-CSRF-Token") or request.headers.get("X-CSRFToken")),
+            "cookie_keys_seen": list(request.cookies.keys()),
+            "session_has_token": "csrf_token" in session,
+            "session_sid": getattr(session, "sid", None),  # 👈 add this
+            "session_keys": list(dict(session).keys()),  # 👈 and this (names only)
+        }), 400
+
     mail.init_app(app)
     limiter.init_app(app)
     db.init_app(app)
@@ -153,10 +251,21 @@ def create_app(config_class=Config):
     app.register_blueprint(entitlements_bp)
     app.register_blueprint(analytics_bp)
 
-    # Request lifecycle hooks
+    # Request lifecycle hooks - COMBINED into single before_request
     @app.before_request
     def before_request():
-        """Set up request context and logging"""
+        """Set up request context, check Redis, and logging"""
+
+        # Check Redis connection if using Redis sessions
+        if app.config.get("SESSION_TYPE") == "redis" and not config_class.TESTING:
+            try:
+                app.config["SESSION_REDIS"].ping()
+            except redis.ConnectionError as e:
+                if hasattr(app, 'logger_instance'):
+                    app.logger_instance.error(f"Redis connection check failed: {e}")
+                # Note: Don't change SESSION_TYPE here - it's too late in the request cycle
+                # The session will fail gracefully if Redis is down
+
         # Generate unique request ID
         g.request_id = str(uuid.uuid4())
 
@@ -360,5 +469,13 @@ def create_app(config_class=Config):
             blueprints_registered=len(app.blueprints),
             environment=config_class.__name__
         )
+
+    from flask import current_app
+    print("=== SESSION DEBUG ===")
+    print("Interface:", type(app.session_interface).__name__)
+    print("SESSION_TYPE:", app.config.get("SESSION_TYPE"))
+    print("SESSION_KEY_PREFIX:", app.config.get("SESSION_KEY_PREFIX"))
+    print("SESSION_REDIS is None?:", app.config.get("SESSION_REDIS") is None)
+    print("=====================")
 
     return app

@@ -1,15 +1,16 @@
 # app/auth/routes/api.py
 from datetime import timedelta
+import uuid
 
 import jwt
 import requests
-from flask import Blueprint, request, jsonify, current_app, g, make_response
+from flask import Blueprint, request, jsonify, current_app, g, make_response, session
 from flask_wtf.csrf import generate_csrf
 from pydantic import ValidationError as PydanticValidationError
 
 from app.auth.models.schemas import UserCreate, UserLogin, TokenSchema, UserOut
 from app.extensions import limit, limiter, csrf_exempt
-from app.utils.endpoint_utils import verify_jwt, csrf_protected
+from app.utils.endpoint_utils import verify_jwt
 from app.utils.exceptions import DataValidationError, DatabaseError, AuthError, ServiceUnavailableError, \
     format_error_response
 from app.utils.time_zone import TimeZone
@@ -17,48 +18,298 @@ from app.utils.time_zone import TimeZone
 bp = Blueprint("auth", __name__, url_prefix="/auth")
 
 
-@bp.route("/signup", methods=["POST"])
-@csrf_protected
-@limiter.limit(limit("3 per minute"))
+def log_request_details(endpoint_name):
+    """Helper to log detailed request information"""
+    print(f"\n{'=' * 60}")
+    print(f"[{endpoint_name}] REQUEST DETAILS")
+    print(f"{'=' * 60}")
+    print(f"Method: {request.method}")
+    print(f"URL: {request.url}")
+    print(f"Origin: {request.headers.get('Origin', 'No Origin header')}")
+    print(f"Host: {request.headers.get('Host', 'No Host header')}")
+    print(f"Referer: {request.headers.get('Referer', 'No Referer')}")
+
+    # Log all cookies received
+    print(f"\nCookies Received ({len(request.cookies)} total):")
+    for cookie_name, cookie_value in request.cookies.items():
+        print(f"  - {cookie_name}: {cookie_value[:50]}..." if len(
+            cookie_value) > 50 else f"  - {cookie_name}: {cookie_value}")
+
+    # Log session details
+    print(f"\nSession Details:")
+
+    sid = getattr(session, "sid", None)
+    print(f"  Session SID: {sid or 'NO SID'}")
+    print(f"  Session ID (_id): {session.get('_id', 'NO _id')}")
+
+    print(f"  Session New: {session.new if hasattr(session, 'new') else 'Unknown'}")
+    print(f"  Session Modified: {session.modified if hasattr(session, 'modified') else 'Unknown'}")
+    print(f"  Session Permanent: {session.permanent}")
+    print(f"  Session Keys: {list(session.keys())}")
+    if 'csrf_token' in session:
+        print(f"  CSRF in session: {session['csrf_token'][:20]}...")
+
+    # Log CORS-related headers
+    print(f"\nCORS Headers in Request:")
+    for header in ['Access-Control-Request-Method', 'Access-Control-Request-Headers',
+                   'Access-Control-Allow-Credentials']:
+        print(f"  {header}: {request.headers.get(header, 'Not present')}")
+
+    # Check Redis if using Redis sessions
+    if hasattr(current_app, 'session_interface'):
+        si = current_app.session_interface
+        if hasattr(si, 'redis'):
+            try:
+                if sid:
+                    redis_key = f"{si.key_prefix}{sid}"
+                    redis_value = si.redis.get(redis_key)
+                    print("\nRedis Check:")
+                    print(f"  Key: {redis_key}")
+                    print(f"  Exists in Redis: {redis_value is not None}")
+                    print(f"  Value (prefix): {(redis_value[:50] + b'...') if redis_value else None}")
+            except Exception as e:
+                print(f"  Redis check error: {e}")
+
+
+    # Log headers
+    print(f"\nRequest Headers:")
+    for header_name, header_value in request.headers.items():
+        print(f"  {header_name}: {header_value}")
+
+    # Log body if POST/PUT
+    if request.method in ["POST", "PUT"]:
+        try:
+            body = request.get_json() or request.form or request.data
+            print(f"\nRequest Body: {body}")
+        except Exception as e:
+            print(f"\nRequest Body: <error reading: {e}>")
+
+    print(f"{'=' * 60}\n")
+
+
+def log_response_details(endpoint_name, response):
+    """Helper to log response details"""
+    print(f"\n{'=' * 60}")
+    print(f"[{endpoint_name}] RESPONSE DETAILS")
+    print(f"{'=' * 60}")
+    print(f"Status: {response.status_code}")
+
+    # Log response headers
+    print(f"\nResponse Headers:")
+    for header_name, header_value in response.headers.items():
+        print(f"  {header_name}: {header_value}")
+
+    print(f"{'=' * 60}\n")
+
+
+@bp.route("/csrf", methods=["GET"])
+@csrf_exempt
+@limiter.limit("5/minute")
+def get_csrf_token():
+    """Generate and return a new CSRF token for frontend"""
+    log_request_details("GET_CSRF")
+
+    # Force a completely new session
+    from flask import session as flask_session
+
+    # Clear any existing session
+    # flask_session.clear()
+
+    # Create new session ID
+    flask_session['_id'] = str(uuid.uuid4())
+    flask_session['initialized'] = True
+    flask_session['created_at'] = str(TimeZone.utc_now())
+
+    # Generate CSRF token - this should also modify session
+    token = generate_csrf()
+
+    # Force the permanent flag
+    flask_session.permanent = True  # This triggers TTL in Redis
+    flask_session.modified = True
+
+    # Try to force save
+    # if hasattr(current_app, 'session_interface'):
+    #     current_app.session_interface.should_set_cookie = lambda app, session: True
+
+    response = make_response(jsonify({
+        "csrf_token": token,
+        "debug": {
+            "session_id": flask_session.get('_id'),
+            "session_keys": list(flask_session.keys()),
+            "modified": flask_session.modified,
+        }
+    }))
+
+    # CRITICAL: Manually save the session
+    current_app.session_interface.save_session(current_app, flask_session, response)
+
+    # Add CORS headers
+    response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', 'http://localhost:3000')
+    response.headers['Access-Control-Allow-Credentials'] = 'true'
+
+    return response
+
+@bp.route("/csrf", methods=["OPTIONS"])
+@csrf_exempt
+def csrf_options():
+    """Handle OPTIONS preflight for /csrf"""
+    response = make_response()
+    response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', 'http://localhost:3000')
+    response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-CSRF-Token, X-CSRFToken, X-Request-ID'
+    response.headers['Access-Control-Allow-Credentials'] = 'true'
+    return response
+
+
+@bp.route("/signup", methods=["POST", "OPTIONS"])
+@limiter.limit("5/minute")
 def signup():
+    if request.method == "OPTIONS":
+        response = make_response()
+        response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', 'http://localhost:3000')
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-CSRF-Token, X-CSRFToken, X-Request-ID'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        return response
+
+    log_request_details("SIGNUP")
+
     try:
-        data = UserCreate(**request.json)
+        data = request.get_json()
+        if not data:
+            raise DataValidationError("No JSON data provided")
+
+        user_data = UserCreate(**data)
+
+        # Get services from app context
+        user_service = current_app.extensions['app_context'].get_service('user_service')
+        security_service = current_app.extensions['app_context'].get_service('security_service')
+
+        # Check if user exists
+        existing_user = user_service.get_user_by_email(user_data.email)
+        if existing_user:
+            raise AuthError("User with this email already exists")
+
+        # Create user
+        hashed_password = security_service.hash_password(user_data.password)
+        new_user = user_service.create_user(
+            email=user_data.email,
+            password_hash=hashed_password,
+            timezone=TimeZone.from_string(data.get('timezone', 'UTC')),
+            is_verified=False
+        )
+
+        # Generate verification token
+        verification_token = security_service.generate_verification_token(new_user)
+
+        # Send verification email
+        user_service.send_verification_email(new_user, verification_token)
+
+        # Create response
+        response_data = {
+            "message": "Account created successfully. Please check your email to verify your account.",
+            "user": UserOut.from_orm(new_user).dict()
+        }
+
+        # Generate session/JWT as needed
+        # For now, since unverified, don't issue JWT
+
+        response = make_response(jsonify(response_data), 201)
+
+        # Add CORS headers
+        response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', 'http://localhost:3000')
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+
+        log_response_details("SIGNUP", response)
+
+        # Track event
+        if hasattr(current_app, 'event_tracker'):
+            current_app.event_tracker.track(
+                user_id=new_user.id,
+                event_name="user_signup",
+                properties={"method": "email"}
+            )
+
+        return response
+
     except PydanticValidationError as e:
         error_response, status_code = format_error_response(DataValidationError(str(e)), 400)
         return make_response(jsonify(error_response), status_code)
-
-    authentication_service = current_app.extensions['app_context'].get_service('authentication_service')
-    try:
-        user = authentication_service.create_user(g.db, data.email, data.password)
-        email_verification_service = current_app.extensions['app_context'].get_service('email_verification_service')
-        email_verification_token = email_verification_service.create_email_verification_token(g.db, user.id, data.email)
-
-        # NEW: Start 14-day Pro reverse trial
-        entitlements_service = current_app.extensions['app_context'].get_service('entitlements_service')
-        entitlements_service.start_reverse_trial(g.db, user.id, tier='pro', days=14)
-
-        jwt_token = jwt.encode(
-            {"sub": str(user.id), "exp": TimeZone.utc_now() + timedelta(hours=24)},
-            current_app.config["JWT_SECRET_KEY"],
-            algorithm=current_app.config["JWT_ALGORITHM"]
-        )
-        return jsonify({"user": UserOut.model_validate(user).model_dump(), "jwt": jwt_token,
-                        "token": email_verification_token.token,
-                        "trial_info": {"tier": "pro", "days": 14,
-                                       "ends_at": (TimeZone.utc_now() + timedelta(days=14)).isoformat()}}), 200
     except AuthError as e:
-        error_response, status_code = format_error_response(AuthError(str(e)), 401)
+        error_response, status_code = format_error_response(AuthError(str(e)), 400)
         return make_response(jsonify(error_response), status_code)
     except DatabaseError as e:
         error_response, status_code = format_error_response(DatabaseError(str(e)), 500)
         return make_response(jsonify(error_response), status_code)
-    except ServiceUnavailableError as e:
-        error_response, status_code = format_error_response(ServiceUnavailableError(str(e)), 500)
-        return make_response(jsonify(error_response), status_code)
+
+from flask import request, session, jsonify, current_app
+
+@bp.route("/debug-cookies", methods=["GET", "OPTIONS"])
+@csrf_exempt
+def debug_cookies():
+    """Debug endpoint to check cookie/session state"""
+    if request.method == "OPTIONS":
+        response = make_response()
+        response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', 'http://localhost:3000')
+        response.headers['Access-Control-Allow-Methods'] = 'GET, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        return response
+
+    log_request_details("DEBUG-COOKIES")
+
+    response = jsonify({
+        "cookies_received": {name: value[:20] + "..." if len(value) > 20 else value
+                             for name, value in request.cookies.items()},
+        "session_data": {
+            "id": session.get('_id', session.sid if hasattr(session, 'sid') else 'NO SESSION'),
+            "keys": list(session.keys()),
+            "new": session.new if hasattr(session, 'new') else None,
+            "permanent": session.permanent
+        },
+        "headers": {
+            "origin": request.headers.get('Origin'),
+            "host": request.headers.get('Host'),
+            "cookie": request.headers.get('Cookie', 'No Cookie header')[:100]
+        },
+        "cookie_keys_seen": list(request.cookies.keys()),
+        "session_cookie_name": current_app.config.get("SESSION_COOKIE_NAME"),
+        "session_sid": getattr(session, "sid", None),
+        "session_has_token": "csrf_token" in session,
+        "session_keys": list(dict(session).keys()),
+    })
+
+    # Add CORS headers
+    response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', 'http://localhost:3000')
+    response.headers['Access-Control-Allow-Credentials'] = 'true'
+
+    log_response_details("DEBUG-COOKIES", response)
+    return response, 200
+
+
+@bp.route("/set-session-test", methods=["GET"])
+@csrf_exempt
+def set_session_test():
+    from flask import session, jsonify, current_app
+    session["__smoke__"] = "ok"
+    session.modified = True
+    resp = jsonify({"wrote": "__smoke__"})
+    current_app.session_interface.save_session(current_app, session, resp)  # force write
+    return resp, 200
+
+
+@bp.route("/get-session-test", methods=["GET"])
+@csrf_exempt
+def get_session_test():
+    from flask import session, jsonify
+    return jsonify({
+        "sid": getattr(session, "sid", None),
+        "keys": list(dict(session).keys()),
+        "has_smoke": "__smoke__" in session
+    }), 200
 
 
 @bp.route("/login", methods=["POST"])
-@csrf_protected
 @limiter.limit(limit("5 per minute"))
 def login():
     try:
@@ -91,7 +342,6 @@ def login():
 
 
 @bp.route("/verify", methods=["POST"])
-@csrf_protected
 @limiter.limit(limit("5 per minute"))
 def verify_email():
     try:
@@ -123,7 +373,6 @@ def verify_email():
 
 
 @bp.route("/apple-signin", methods=["POST"])
-@csrf_protected
 @limiter.limit(limit("5 per minute"))
 def apple_signin():
     id_token = request.json.get("id_token")
@@ -194,7 +443,6 @@ def test_session_setup():
 
 
 @bp.route("/reset-password", methods=["POST"])
-@csrf_protected
 @limiter.limit(limit("3 per minute"))
 def request_password_reset():
     try:
@@ -219,7 +467,6 @@ def request_password_reset():
 
 
 @bp.route("/reset-password/confirm", methods=["POST"])
-@csrf_protected
 @limiter.limit(limit("5 per minute"))
 def confirm_password_reset():
     try:
@@ -251,7 +498,6 @@ def confirm_password_reset():
 
 @bp.route("/2fa/setup", methods=["GET"])
 @verify_jwt
-@csrf_protected
 @limiter.limit(limit("5 per minute"))
 def setup_2fa():
     authentication_service = current_app.extensions['app_context'].get_service('authentication_service')
@@ -270,7 +516,6 @@ def setup_2fa():
 
 
 @bp.route("/2fa/verify", methods=["POST"])
-@csrf_protected
 @limiter.limit(limit("5 per minute"))
 def verify_2fa():
     data = request.json

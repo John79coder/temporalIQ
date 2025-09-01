@@ -27,15 +27,12 @@ class EntitlementsRepository(AbstractRepository):
                 existing.stripe_customer_id = tier.stripe_customer_id
                 existing.annual_billing = tier.annual_billing
                 existing.updated_at = TimeZone.utc_now()
-                db.commit()
-                db.refresh(existing)
+                db.flush()
                 return existing
             db.add(tier)
-            db.commit()
-            db.refresh(tier)
+            db.flush()
             return tier
         except Exception as e:
-            db.rollback()
             raise wrap_external_error(e, DatabaseError, "Failed to save subscription tier")
 
     def get_usage_for_period(self, db: Session, user_id: int, metric_type: str, period_start: datetime) -> Optional[UsageMetrics]:

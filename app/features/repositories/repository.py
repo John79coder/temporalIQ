@@ -20,11 +20,9 @@ class FeaturesRepository(AbstractRepository):
 
         try:
             db.add(settings)
-            db.commit()
-            db.refresh(settings)
+            db.flush()
             return settings
         except SQLAlchemyError as e:
-            db.rollback()
             self.logging_service.error("Failed to create AI settings", user_id=settings.user_id,
                                        extra={"error": str(e)})
             raise wrap_external_error(e, DatabaseError, "Failed to create AI settings") from e

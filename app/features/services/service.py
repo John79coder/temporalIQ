@@ -23,8 +23,10 @@ class FeaturesService:
 
     def create_default_settings(self, db: Session, user_id: int) -> UserAISettings:
         """Create default AI settings for a new user (all enabled, global learning)"""
+
         default_values = AISettingsConfiguration.get_default_settings()
         settings = UserAISettings(user_id=user_id, **default_values)
+
         return self.repo.create_or_update(db, settings)
 
     def get_settings(self, db: Session, user_id: int) -> UserAISettings:

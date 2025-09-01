@@ -17,7 +17,7 @@ def test_email_verification_service_create_token(mock_send, db_session, app, cac
     with app.app_context():
         service = EmailVerificationService(TokenRepository(), caching_service)
 
-        verification_token = service.create_email_verification_token(db_session, user.id, user.email)
+        verification_token = EmailVerificationService.create_email_verification_token(db_session, user.id, user.email)
 
         assert verification_token.user_id == user.id
         assert verification_token.token is not None
@@ -34,7 +34,7 @@ def test_email_verification_service_invalid_email(mock_send, db_session, app, ca
         service = EmailVerificationService(TokenRepository(), caching_service)
 
         with pytest.raises(DataValidationError, match="email address"):
-            service.create_email_verification_token(db_session, user.id, "invalid-email")
+            EmailVerificationService.create_email_verification_token(db_session, user.id, "invalid-email")
 
 
 def test_authentication_service_authenticate_user(db_session, test_user, authentication_service):

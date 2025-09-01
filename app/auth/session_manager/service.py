@@ -65,16 +65,21 @@ class AuthenticationService:
             raise wrap_external_error(e, AuthError, "Password verification failed")
 
     def create_user(self, db, email: str, password: str) -> User:
-        # Explicit duplicate check
+
         if self.user_repo.get_by_email(db, email):
             raise AuthError("Email already exists")
-        hashed = self.hash_password(password)
+
+        hashed_password = self.hash_password(password)
+
         try:
-            user = self.user_repo.create(db, email, hashed)
+            user = self.user_repo.create(db, email, hashed_password)
+
         except Exception as e:
             raise wrap_external_error(e, DatabaseError, "Failed to create user")
+
         self.features_service.create_default_settings(db, user.id)
         self.caching_service.delete(f"auth:user:email:{email}")
+
         return user
 
     def authenticate_user(self, db, email: str, password: str):

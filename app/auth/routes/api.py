@@ -5,11 +5,14 @@ import uuid
 import jwt
 import requests
 from flask import Blueprint, request, jsonify, current_app, g, make_response, session
+from flask_session import Session
 from flask_wtf.csrf import generate_csrf
 from pydantic import ValidationError as PydanticValidationError
 
+from app.auth.email_verification.service import EmailVerificationService
 from app.auth.models.schemas import UserCreate, UserLogin, TokenSchema, UserOut
 from app.extensions import limit, limiter, csrf_exempt
+from app.utils.db_transactions import transactional_route
 from app.utils.endpoint_utils import verify_jwt
 from app.utils.exceptions import DataValidationError, DatabaseError, AuthError, ServiceUnavailableError, \
     format_error_response
@@ -69,7 +72,6 @@ def log_request_details(endpoint_name):
                     print(f"  Value (prefix): {(redis_value[:50] + b'...') if redis_value else None}")
             except Exception as e:
                 print(f"  Redis check error: {e}")
-
 
     # Log headers
     print(f"\nRequest Headers:")
@@ -149,6 +151,7 @@ def get_csrf_token():
 
     return response
 
+
 @bp.route("/csrf", methods=["OPTIONS"])
 @csrf_exempt
 def csrf_options():
@@ -161,88 +164,52 @@ def csrf_options():
     return response
 
 
-@bp.route("/signup", methods=["POST", "OPTIONS"])
-@limiter.limit("5/minute")
-def signup():
-    if request.method == "OPTIONS":
-        response = make_response()
-        response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', 'http://localhost:3000')
-        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-CSRF-Token, X-CSRFToken, X-Request-ID'
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
-        return response
-
-    log_request_details("SIGNUP")
+@bp.route("/signup", methods=["POST"])
+@limiter.limit(limit("3 per minute"))
+@transactional_route()
+def signup(db: Session):
 
     try:
-        data = request.get_json()
-        if not data:
-            raise DataValidationError("No JSON data provided")
-
-        user_data = UserCreate(**data)
-
-        # Get services from app context
-        user_service = current_app.extensions['app_context'].get_service('user_service')
-        security_service = current_app.extensions['app_context'].get_service('security_service')
-
-        # Check if user exists
-        existing_user = user_service.get_user_by_email(user_data.email)
-        if existing_user:
-            raise AuthError("User with this email already exists")
-
-        # Create user
-        hashed_password = security_service.hash_password(user_data.password)
-        new_user = user_service.create_user(
-            email=user_data.email,
-            password_hash=hashed_password,
-            timezone=TimeZone.from_string(data.get('timezone', 'UTC')),
-            is_verified=False
-        )
-
-        # Generate verification token
-        verification_token = security_service.generate_verification_token(new_user)
-
-        # Send verification email
-        user_service.send_verification_email(new_user, verification_token)
-
-        # Create response
-        response_data = {
-            "message": "Account created successfully. Please check your email to verify your account.",
-            "user": UserOut.from_orm(new_user).dict()
-        }
-
-        # Generate session/JWT as needed
-        # For now, since unverified, don't issue JWT
-
-        response = make_response(jsonify(response_data), 201)
-
-        # Add CORS headers
-        response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', 'http://localhost:3000')
-        response.headers['Access-Control-Allow-Credentials'] = 'true'
-
-        log_response_details("SIGNUP", response)
-
-        # Track event
-        if hasattr(current_app, 'event_tracker'):
-            current_app.event_tracker.track(
-                user_id=new_user.id,
-                event_name="user_signup",
-                properties={"method": "email"}
-            )
-
-        return response
+        data = UserCreate(**request.json)
 
     except PydanticValidationError as e:
         error_response, status_code = format_error_response(DataValidationError(str(e)), 400)
         return make_response(jsonify(error_response), status_code)
+
+    authentication_service = current_app.extensions['app_context'].get_service('authentication_service')
+
+    try:
+        user = authentication_service.create_user(g.db, data.email, data.password)
+        email_verification_service = current_app.extensions['app_context'].get_service('email_verification_service')
+        email_verification_token = email_verification_service.create_email_verification_token(g.db, user.id, data.email)
+
+
+        entitlements_service = current_app.extensions['app_context'].get_service('entitlements_service')
+        entitlements_service.start_reverse_trial(g.db, user.id, tier='pro', days=14)
+
+        jwt_token = jwt.encode(
+            {"sub": str(user.id), "exp": TimeZone.utc_now() + timedelta(hours=24)},
+            current_app.config["JWT_SECRET_KEY"],
+            algorithm=current_app.config["JWT_ALGORITHM"]
+        )
+
+        return jsonify({"user": UserOut.model_validate(user).model_dump(), "jwt": jwt_token,
+                        "token": email_verification_token.token,
+                        "trial_info": {"tier": "pro", "days": 14,
+                                       "ends_at": (TimeZone.utc_now() + timedelta(days=14)).isoformat()}}), 200
     except AuthError as e:
         error_response, status_code = format_error_response(AuthError(str(e)), 400)
         return make_response(jsonify(error_response), status_code)
     except DatabaseError as e:
         error_response, status_code = format_error_response(DatabaseError(str(e)), 500)
         return make_response(jsonify(error_response), status_code)
+    except ServiceUnavailableError as e:
+        error_response, status_code = format_error_response(ServiceUnavailableError(str(e)), 500)
+        return make_response(jsonify(error_response), status_code)
+
 
 from flask import request, session, jsonify, current_app
+
 
 @bp.route("/debug-cookies", methods=["GET", "OPTIONS"])
 @csrf_exempt
@@ -343,32 +310,192 @@ def login():
 
 @bp.route("/verify", methods=["POST"])
 @limiter.limit(limit("5 per minute"))
-def verify_email():
+@transactional_route()
+def verify_email(db: Session):
     try:
         data = TokenSchema(**request.json)
+
     except PydanticValidationError as e:
         error_response, status_code = format_error_response(DataValidationError(str(e)), 400)
         return make_response(jsonify(error_response), status_code)
 
     email_verification_service = current_app.extensions['app_context'].get_service('email_verification_service')
+
     try:
-        vt = email_verification_service.verify_token(g.db, data.token)
-        if not vt:
+        verification_token = email_verification_service.verify_token(g.db, data.token)
+
+        if not verification_token:
             error_response, status_code = format_error_response(AuthError("Invalid or expired token"), 400)
             return make_response(jsonify(error_response), status_code)
+
         authentication_service = current_app.extensions['app_context'].get_service('authentication_service')
-        user = authentication_service.user_repo.update_verified(g.db, vt.user_id)
+        user = authentication_service.update_verified(g.db, verification_token.user_id)
+
         jwt_token = jwt.encode(
             {"sub": str(user.id), "exp": TimeZone.utc_now() + timedelta(hours=24)},
             current_app.config["JWT_SECRET_KEY"],
             algorithm=current_app.config["JWT_ALGORITHM"]
         )
+
         return jsonify({"user": UserOut.model_validate(user).model_dump(), "jwt": jwt_token}), 200
+
     except DatabaseError as e:
         error_response, status_code = format_error_response(DatabaseError(str(e)), 500)
         return make_response(jsonify(error_response), status_code)
     except ServiceUnavailableError as e:
         error_response, status_code = format_error_response(ServiceUnavailableError(str(e)), 500)
+        return make_response(jsonify(error_response), status_code)
+
+
+# ADD: Resend verification endpoint (missing from original)
+@bp.route("/resend-verification", methods=["POST", "OPTIONS"])
+@limiter.limit(limit("5 per minute"))
+def resend_verification():
+    """Resend verification email to user"""
+    if request.method == "OPTIONS":
+        response = make_response()
+        response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', 'http://localhost:3000')
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-CSRF-Token, X-CSRFToken, X-Request-ID'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        return response
+
+    try:
+        data = request.get_json()
+        if not data or 'email' not in data:
+            raise DataValidationError("Email is required")
+
+        email = data['email']
+
+        # Get services
+        authentication_service = current_app.extensions['app_context'].get_service('authentication_service')
+        email_verification_service = current_app.extensions['app_context'].get_service('email_verification_service')
+
+        # Find user by email
+        user = authentication_service.user_repo.get_by_email(g.db, email)
+        if not user:
+            # Don't reveal if email exists or not for security
+            return jsonify({"message": "If an account exists with this email, a verification link has been sent."}), 200
+
+        # Check if already verified
+        if user.is_verified:
+            return jsonify({"message": "Account is already verified."}), 200
+
+        # Generate a new verification token and send email
+        EmailVerificationService.create_email_verification_token(g.db, user.id, user.email)
+
+        return jsonify({"message": "Verification email sent. Please check your inbox."}), 200
+
+    except PydanticValidationError as e:
+        error_response, status_code = format_error_response(DataValidationError(str(e)), 400)
+        return make_response(jsonify(error_response), status_code)
+    except DataValidationError as e:
+        error_response, status_code = format_error_response(e, 400)
+        return make_response(jsonify(error_response), status_code)
+    except ServiceUnavailableError as e:
+        error_response, status_code = format_error_response(e, 503)
+        return make_response(jsonify(error_response), status_code)
+    except Exception as e:
+        # Log error but don't expose details
+        current_app.logger.error(f"Error in resend_verification: {str(e)}")
+        return jsonify({"message": "If an account exists with this email, a verification link has been sent."}), 200
+
+
+# UPDATE: Add alias route for frontend compatibility
+@bp.route("/request-reset", methods=["POST", "OPTIONS"])
+@limiter.limit(limit("3 per minute"))
+def request_password_reset_alias():
+    """Alias for /reset-password to match frontend expectations"""
+    if request.method == "OPTIONS":
+        response = make_response()
+        response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', 'http://localhost:3000')
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-CSRF-Token, X-CSRFToken, X-Request-ID'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        return response
+
+    # Call the existing function
+    return request_password_reset()
+
+
+@bp.route("/reset-password", methods=["POST", "OPTIONS"])
+@limiter.limit(limit("3 per minute"))
+@transactional_route()
+def request_password_reset(db: Session):
+    """Request password reset - original endpoint kept for backwards compatibility"""
+    if request.method == "OPTIONS":
+        response = make_response()
+        response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', 'http://localhost:3000')
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-CSRF-Token, X-CSRFToken, X-Request-ID'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        return response
+
+    try:
+        data = request.get_json()
+        email = data.get("email")
+
+        # Check if this is actually a reset confirmation (has token and new_password)
+        if data.get("token") and data.get("new_password"):
+            # This is actually a reset confirmation, redirect to that handler
+            return confirm_password_reset()
+
+        if not email:
+            raise DataValidationError("Email is required")
+    except Exception as e:
+        error_response, status_code = format_error_response(DataValidationError(str(e)), 400)
+        return make_response(jsonify(error_response), status_code)
+
+    authentication_service = current_app.extensions['app_context'].get_service('authentication_service')
+
+    # Always return a success message for security (don't reveal if email exists)
+    try:
+        user = authentication_service.user_repo.get_by_email(db, email)
+        if user and user.is_verified:
+            # Only send reset email if user exists and is verified
+            authentication_service.request_password_reset(db, email)
+    except Exception as e:
+        # Log the error but don't expose it to the user
+        current_app.logger.error(f"Error in password reset request: {str(e)}")
+
+    # Always return the same message regardless of whether email exists
+    return jsonify({"message": "If an account exists with this email, a password reset link has been sent."}), 200
+
+
+@bp.route("/reset-password/confirm", methods=["POST"])
+@limiter.limit(limit("5 per minute"))
+@transactional_route()
+def confirm_password_reset(db: Session):
+    try:
+        data = request.json
+
+
+        token = data.get("token")
+        new_password = data.get("new_password")
+        if not token or not new_password:
+            raise DataValidationError("Missing token or new_password")
+    except Exception as e:
+        error_response, status_code = format_error_response(DataValidationError(str(e)), 400)
+        return make_response(jsonify(error_response), status_code)
+
+    authentication_service = current_app.extensions['app_context'].get_service('authentication_service')
+    try:
+        user = authentication_service.reset_password(db, token, new_password)
+        jwt_token = jwt.encode(
+            {"sub": str(user.id), "exp": TimeZone.utc_now() + timedelta(hours=24)},
+            current_app.config["JWT_SECRET_KEY"],
+            algorithm=current_app.config["JWT_ALGORITHM"]
+        )
+        return jsonify({
+            "message": "Password reset successful",
+            "user": UserOut.model_validate(user).model_dump(),
+            "jwt": jwt_token
+        }), 200
+    except AuthError as e:
+        error_response, status_code = format_error_response(AuthError(str(e)), 400)
+        return make_response(jsonify(error_response), status_code)
+    except DatabaseError as e:
+        error_response, status_code = format_error_response(DatabaseError(str(e)), 500)
         return make_response(jsonify(error_response), status_code)
 
 
@@ -439,60 +566,6 @@ def test_session_setup():
     except RuntimeError:
         error_response, status_code = format_error_response(ServiceUnavailableError("Failed to generate CSRF token"),
                                                             500)
-        return make_response(jsonify(error_response), status_code)
-
-
-@bp.route("/reset-password", methods=["POST"])
-@limiter.limit(limit("3 per minute"))
-def request_password_reset():
-    try:
-        data = request.json
-        email = data.get("email")
-        if not email:
-            raise DataValidationError("Missing email")
-    except Exception as e:
-        error_response, status_code = format_error_response(DataValidationError(str(e)), 400)
-        return make_response(jsonify(error_response), status_code)
-
-    authentication_service = current_app.extensions['app_context'].get_service('authentication_service')
-    try:
-        authentication_service.request_password_reset(g.db, email)
-        return jsonify({"message": "Password reset link sent to your email"}), 200
-    except AuthError as e:
-        error_response, status_code = format_error_response(AuthError(str(e)), 400)
-        return make_response(jsonify(error_response), status_code)
-    except DatabaseError as e:
-        error_response, status_code = format_error_response(DatabaseError(str(e)), 500)
-        return make_response(jsonify(error_response), status_code)
-
-
-@bp.route("/reset-password/confirm", methods=["POST"])
-@limiter.limit(limit("5 per minute"))
-def confirm_password_reset():
-    try:
-        data = request.json
-        token = data.get("token")
-        new_password = data.get("new_password")
-        if not token or not new_password:
-            raise DataValidationError("Missing token or new_password")
-    except Exception as e:
-        error_response, status_code = format_error_response(DataValidationError(str(e)), 400)
-        return make_response(jsonify(error_response), status_code)
-
-    authentication_service = current_app.extensions['app_context'].get_service('authentication_service')
-    try:
-        user = authentication_service.reset_password(g.db, token, new_password)
-        jwt_token = jwt.encode(
-            {"sub": str(user.id), "exp": TimeZone.utc_now() + timedelta(hours=24)},
-            current_app.config["JWT_SECRET_KEY"],
-            algorithm=current_app.config["JWT_ALGORITHM"]
-        )
-        return jsonify({"user": UserOut.model_validate(user).model_dump(), "jwt": jwt_token}), 200
-    except AuthError as e:
-        error_response, status_code = format_error_response(AuthError(str(e)), 400)
-        return make_response(jsonify(error_response), status_code)
-    except DatabaseError as e:
-        error_response, status_code = format_error_response(DatabaseError(str(e)), 500)
         return make_response(jsonify(error_response), status_code)
 
 

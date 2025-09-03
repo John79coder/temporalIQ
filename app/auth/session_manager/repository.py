@@ -89,14 +89,17 @@ class UserRepository(AbstractRepository):
 
     @staticmethod
     def update_password(db: Session, user_id: int, hashed_password: str) -> Optional[User]:
-        with db.begin(nested=True):
-            user = db.query(User).filter(User.id == user_id).first()
-            if user:
-                user.hashed_password = hashed_password
-                user.updated_at = TimeZone.utc_now()
-                db.flush()
-                db.refresh(user)
-            return user
+        # Use 2.0 helper instead of query().filter(...).first()
+        user = db.get(User, user_id)
+        if user is None:
+            return None
+
+        user.hashed_password = hashed_password
+        user.updated_at = TimeZone.utc_now()
+
+        db.flush()
+
+        return user
 
     @staticmethod
     def enable_2fa(db: Session, user_id: int, secret: str, backup_codes: List[str]) -> None:

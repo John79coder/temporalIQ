@@ -6,7 +6,7 @@ import secrets
 import smtplib
 from datetime import timedelta
 from io import BytesIO
-from typing import Optional
+from typing import Optional, Dict, Any, List
 
 import jwt
 import pyotp
@@ -33,6 +33,8 @@ class AuthenticationService:
         self.caching_service = caching_service
         self.features_service = features_service
         self.apple_jwks_url = "https://appleid.apple.com/auth/keys"
+        # === NEW: Add Apple token URL ===
+        self.apple_token_url = "https://appleid.apple.com/auth/token"
         self.failed_login_threshold = 5  # Configurable if needed
 
     def update_verified(self, db: Session, user_id: int) -> Optional[User]:
@@ -58,108 +60,181 @@ class AuthenticationService:
     def verify_password(plain: str, hashed: str) -> bool:
         try:
             return pwd_context.verify(plain, hashed)
-        except (ValueError, TypeError) as e:
-            logging.warning(f"Password verification failed due to invalid input: {str(e)}")
+        except Exception:
             return False
-        except Exception as e:
-            raise wrap_external_error(e, AuthError, "Password verification failed")
 
-    def create_user(self, db, email: str, password: str) -> User:
-
-        if self.user_repo.get_by_email(db, email):
+    def create_user(self, db: Session, email: str, password: str) -> User:
+        existing_user = self.user_repo.get_by_email(db, email)
+        if existing_user:
             raise AuthError("Email already exists")
 
         hashed_password = self.hash_password(password)
-
         try:
             user = self.user_repo.create(db, email, hashed_password)
-
+            self.features_service.create_default_settings(db, user.id)
+            return user
         except Exception as e:
             raise wrap_external_error(e, DatabaseError, "Failed to create user")
 
-        self.features_service.create_default_settings(db, user.id)
-        self.caching_service.delete(f"auth:user:email:{email}")
-
-        return user
-
-    def authenticate_user(self, db, email: str, password: str):
-        cache_key = f"auth:user:email:{email}"
-        user = None
+    def authenticate_user(self, db: Session, email: str, password: str) -> Optional[User]:
         try:
+            cache_key = f"auth:user:email:{email}"
             cached_user = self.caching_service.get(cache_key)
+
             if cached_user:
                 user = User.from_dict(cached_user)
-        except (pickle.PickleError, TypeError) as e:
-            logging.warning(f"Cache retrieval failed for key {cache_key}: {str(e)}")
-
-        if not user:
-            try:
-                user = self.user_repo.get_by_email(db, email)
-            except Exception as e:
-                raise wrap_external_error(e, DatabaseError, "Failed to retrieve user")
-            if user:
-                self.caching_service.set(
-                    cache_key,
-                    user.__dict__,
-                    timeout=300
-                )
-
-        if user:
-            if user.failed_logins >= self.failed_login_threshold:
-                self.log_anomaly("login_failed", {"email": email})
-                raise AuthError("Account locked due to too many failed attempts")
-            if self.verify_password(password, user.hashed_password):
-                self.user_repo.update_failed_logins(db, user.id, 0)
-                return user
             else:
-                new_count = user.failed_logins + 1
-                self.user_repo.update_failed_logins(db, user.id, new_count)
-                self.log_anomaly("login_failed", {"email": email})
-                return None
-        self.log_anomaly("login_failed", {"email": email})
-        return None
+                user = self.user_repo.get_by_email(db, email)
+                if user:
+                    self.caching_service.set(cache_key, user.__dict__, timeout=300)
 
+            if user:
+                if user.failed_logins >= self.failed_login_threshold:
+                    self.log_anomaly("excessive_failed_logins", {"email": email})
+                    raise AuthError("Account temporarily locked due to multiple failed login attempts")
+
+                if self.verify_password(password, user.hashed_password):
+                    if user.failed_logins > 0:
+                        self.user_repo.update_failed_logins(db, user.id, 0)
+                        self.caching_service.delete(cache_key)
+                    return user
+                else:
+                    new_count = user.failed_logins + 1
+                    self.user_repo.update_failed_logins(db, user.id, new_count)
+                    self.log_anomaly("login_failed", {"email": email})
+                    return None
+
+            self.log_anomaly("login_failed", {"email": email})
+            return None
+
+        except AuthError:
+            raise
+        except Exception as e:
+            logging.error(f"Authentication error: {str(e)}")
+            raise wrap_external_error(e, DatabaseError, "Authentication failed")
+
+    # === NEW: Apple Sign-In Methods ===
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(2), retry=retry_if_exception_type(requests.RequestException))
     def _fetch_apple_jwks(self):
         try:
             with requests.Session() as session:
-                return session.get(self.apple_jwks_url).json()
+                response = session.get(self.apple_jwks_url)
+                response.raise_for_status()
+                return response.json()
         except requests.RequestException as e:
             logging.error(f"Failed to fetch Apple JWKS: {str(e)}")
-            raise wrap_external_error(e, AuthError, "Failed to fetch Apple JWKS")
+            raise wrap_external_error(e, ServiceUnavailableError, "Failed to fetch Apple JWKS")
 
-    def authenticate_apple_user(self, db, id_token: str, jwks: dict = None):
+    def authenticate_apple_user(self, db: Session, id_token: str, jwks: dict = None, user_info: dict = None) -> User:
+        """Authenticate user with Apple ID token"""
         try:
             if jwks is None:
                 jwks = self._fetch_apple_jwks()
+
+            # Decode and verify the ID token
             header = jwt.get_unverified_header(id_token)
-            key = next(k for k in jwks["keys"] if k["kid"] == header["kid"])
+            key = next((k for k in jwks["keys"] if k["kid"] == header["kid"]), None)
+
+            if not key:
+                raise AuthError("Invalid Apple ID token - key not found")
+
+            # Verify the token
             decoded = jwt.decode(
                 id_token,
                 key,
                 algorithms=["RS256"],
                 issuer="https://appleid.apple.com",
-                audience=Config.APPLE_CLIENT_ID
+                audience=Config.APPLE_CLIENT_ID,
+                options={"verify_exp": True}
             )
-            email = decoded["email"]
+
+            email = decoded.get("email")
+            if not email:
+                raise AuthError("Email not provided in Apple ID token")
+
+            # Check if user exists
             try:
                 user = self.user_repo.get_by_email(db, email)
             except Exception as e:
                 raise wrap_external_error(e, DatabaseError, "Failed to retrieve user")
+
+            # Create new user if doesn't exist
             if not user:
                 try:
-                    user = self.user_repo.create(db, email, "")
-                    user.is_verified = True
+                    # Generate a secure random password for Apple users
+                    random_password = secrets.token_urlsafe(32)
+                    hashed_password = self.hash_password(random_password)
+
+                    user = self.user_repo.create(db, email, hashed_password)
+                    user.is_verified = True  # Apple users are pre-verified
+
+                    # Set user's name if provided
+                    if user_info and user_info.get("name"):
+                        name_info = user_info["name"]
+                        # Note: You'd need to add first_name and last_name columns to User model
+                        # if hasattr(user, 'first_name') and name_info.get("firstName"):
+                        #     user.first_name = name_info["firstName"]
+                        # if hasattr(user, 'last_name') and name_info.get("lastName"):
+                        #     user.last_name = name_info["lastName"]
+
                     user.updated_at = TimeZone.utc_now()
                     db.commit()
+
+                    # Create default settings
                     self.features_service.create_default_settings(db, user.id)
+
+                    # Clear cache
                     self.caching_service.delete(f"auth:user:email:{email}")
+
                 except Exception as e:
                     raise wrap_external_error(e, DatabaseError, "Failed to create Apple user")
+
             return user
-        except (jwt.InvalidTokenError, ValueError, TypeError) as e:
+
+        except jwt.InvalidTokenError as e:
             self.log_anomaly("apple_auth_failed", {"error": str(e)})
-            raise wrap_external_error(e, AuthError, "Apple JWT verification failed")
+            raise wrap_external_error(e, AuthError, "Invalid Apple ID token")
+        except (ValueError, TypeError, KeyError) as e:
+            self.log_anomaly("apple_auth_failed", {"error": str(e)})
+            raise wrap_external_error(e, AuthError, "Apple authentication failed")
+
+    def exchange_apple_authorization_code(self, db: Session, authorization_code: str, user_info: dict = None) -> User:
+        """Exchange Apple authorization code for tokens"""
+        try:
+            # Prepare token exchange request
+            data = {
+                "client_id": Config.APPLE_CLIENT_ID,
+                "client_secret": self._generate_apple_client_secret(),
+                "code": authorization_code,
+                "grant_type": "authorization_code"
+            }
+
+            # Exchange code for tokens
+            with requests.Session() as session:
+                response = session.post(self.apple_token_url, data=data)
+                response.raise_for_status()
+                token_response = response.json()
+
+            # Extract and verify ID token
+            id_token = token_response.get("id_token")
+            if not id_token:
+                raise AuthError("No ID token received from Apple")
+
+            # Authenticate with the ID token
+            return self.authenticate_apple_user(db, id_token, user_info=user_info)
+
+        except requests.RequestException as e:
+            logging.error(f"Failed to exchange Apple authorization code: {str(e)}")
+            raise wrap_external_error(e, ServiceUnavailableError, "Failed to exchange authorization code")
+
+    def _generate_apple_client_secret(self) -> str:
+        """Generate client secret for Apple Sign In"""
+        # This would typically use Apple's private key to generate a JWT
+        # For production, implement proper client secret generation
+        # See: https://developer.apple.com/documentation/sign_in_with_apple/generate_and_validate_tokens
+        return Config.APPLE_CLIENT_SECRET if hasattr(Config, 'APPLE_CLIENT_SECRET') else ""
+
+    # === END Apple Sign-In Methods ===
 
     @staticmethod
     def log_anomaly(event_type: str, details: dict):
@@ -196,52 +271,161 @@ class AuthenticationService:
 
         return user
 
-    def setup_2fa(self, db: Session, user_id: int):
+    # === NEW: 2FA Methods ===
+    def generate_2fa_setup(self, db: Session, user_id: int) -> Dict[str, Any]:
+        """Generate 2FA setup data including QR code"""
         user = self.user_repo.get_by_id(db, user_id)
         if not user:
             raise AuthError("User not found")
 
-        secret = pyotp.random_base32()
-        backup_codes = self.user_repo.generate_backup_codes()
-        self.user_repo.enable_2fa(db, user_id, secret, backup_codes)
-        db.commit()  # Explicit commit if not auto
+        # Generate or use existing secret
+        if not user.two_factor_secret:
+            secret = pyotp.random_base32()
+            # Temporarily store the secret (not enabled yet)
+            user.two_factor_secret = secret
+            db.commit()
+        else:
+            secret = user.two_factor_secret
 
-        qr_url = pyotp.TOTP(secret).provisioning_uri(name=user.email, issuer_name="YourSaaS")
+        # Generate provisioning URI for QR code
+        totp_uri = pyotp.TOTP(secret).provisioning_uri(
+            name=user.email,
+            issuer_name=current_app.config.get('APP_NAME', 'SmartScheduler')
+        )
 
-        qr = qrcode.QRCode()
-        qr.add_data(qr_url)
+        # Generate QR code
+        qr = qrcode.QRCode(version=1, box_size=10, border=5)
+        qr.add_data(totp_uri)
         qr.make(fit=True)
-        img = qr.make_image(fill_color="black", back_color="white")
 
+        img = qr.make_image(fill_color="black", back_color="white")
         buffer = BytesIO()
         img.save(buffer, format="PNG")
 
         qr_base64 = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
 
-        return {"qr_base64": qr_base64, "secret": secret, "backup_codes": backup_codes}
+        return {
+            "qr_code": qr_base64,
+            "secret": secret,
+            "manual_entry_key": secret,
+            "issuer": current_app.config.get('APP_NAME', 'SmartScheduler')
+        }
 
-    def verify_2fa_code(self, db: Session, user_id: int, code: str):
+    def enable_2fa(self, db: Session, user_id: int, code: str, secret: str = None) -> Dict[str, Any]:
+        """Enable 2FA after verifying the setup code"""
+        user = self.user_repo.get_by_id(db, user_id)
+        if not user:
+            raise AuthError("User not found")
+
+        # Use provided secret or existing one
+        secret_to_verify = secret or user.two_factor_secret
+        if not secret_to_verify:
+            raise AuthError("No 2FA secret found")
+
+        # Verify the code
+        totp = pyotp.TOTP(secret_to_verify)
+        if not totp.verify(code, valid_window=1):
+            return None
+
+        # Generate backup codes
+        backup_codes = self.user_repo.generate_backup_codes()
+
+        # Enable 2FA with hashed backup codes
+        self.user_repo.enable_2fa(db, user_id, secret_to_verify, backup_codes)
+
+        # Clear cache
+        self.caching_service.delete(f"auth:user:id:{user_id}")
+
+        return {
+            "success": True,
+            "backup_codes": backup_codes  # Return unhashed codes to user once
+        }
+
+    def verify_2fa_code(self, db: Session, user_id: int, code: str) -> bool:
+        """Verify a 2FA code or backup code"""
         user = self.user_repo.get_by_id(db, user_id)
         if not user or not user.two_factor_enabled:
-            raise AuthError("2FA not enabled")
+            raise AuthError("2FA not enabled for this user")
+
+        # First try TOTP verification
         totp = pyotp.TOTP(user.two_factor_secret)
-        if totp.verify(code):
+        if totp.verify(code, valid_window=1):
             return True
-        for i, hashed_code in enumerate(user.backup_codes or []):
-            if pwd_context.verify(code, hashed_code):
-                user.backup_codes.pop(i)
-                user.updated_at = TimeZone.utc_now()
-                db.commit()
-                return True
+
+        # Try backup codes if TOTP fails
+        if user.backup_codes:
+            for i, hashed_code in enumerate(user.backup_codes):
+                if pwd_context.verify(code, hashed_code):
+                    # Remove used backup code
+                    user.backup_codes.pop(i)
+                    user.updated_at = TimeZone.utc_now()
+                    db.commit()
+                    return True
+
         return False
 
-    # NEW: General _send_email method (moved from EmailVerificationService for reuse)
+    def disable_2fa(self, db: Session, user_id: int) -> bool:
+        """Disable 2FA for a user"""
+        user = self.user_repo.get_by_id(db, user_id)
+        if not user:
+            raise AuthError("User not found")
+
+        user.two_factor_enabled = False
+        user.two_factor_secret = None
+        user.backup_codes = None
+        user.updated_at = TimeZone.utc_now()
+        db.commit()
+
+        # Clear cache
+        self.caching_service.delete(f"auth:user:id:{user_id}")
+
+        return True
+
+    def get_backup_codes_info(self, db: Session, user_id: int) -> Dict[str, Any]:
+        """Get information about user's backup codes"""
+        user = self.user_repo.get_by_id(db, user_id)
+        if not user:
+            raise AuthError("User not found")
+
+        if not user.two_factor_enabled:
+            raise AuthError("2FA not enabled")
+
+        return {
+            "codes_remaining": len(user.backup_codes) if user.backup_codes else 0,
+            "two_factor_enabled": user.two_factor_enabled
+        }
+
+    def regenerate_backup_codes(self, db: Session, user_id: int) -> List[str]:
+        """Regenerate backup codes for a user"""
+        user = self.user_repo.get_by_id(db, user_id)
+        if not user:
+            raise AuthError("User not found")
+
+        if not user.two_factor_enabled:
+            raise AuthError("2FA not enabled")
+
+        # Generate new backup codes
+        backup_codes = self.user_repo.generate_backup_codes()
+
+        # Store hashed versions
+        user.backup_codes = [pwd_context.hash(code) for code in backup_codes]
+        user.updated_at = TimeZone.utc_now()
+        db.commit()
+
+        # Clear cache
+        self.caching_service.delete(f"auth:user:id:{user_id}")
+
+        return backup_codes  # Return unhashed codes to user
+
+    # === END 2FA Methods ===
+
     def _send_email(self, to_email: str, subject: str, body: str):
+        """Send email using Flask-Mail"""
         msg = Message(
             subject=subject,
             recipients=[to_email],
             body=body,
-            html=f"<p>{body}</p>",  # Simple HTML version
+            html=f"<p>{body}</p>",
             sender=current_app.config['MAIL_DEFAULT_SENDER']
         )
         try:
@@ -256,12 +440,6 @@ class AuthenticationService:
         except smtplib.SMTPServerDisconnected as e:
             logging.error(f"SMTP server disconnected for {to_email}: {str(e)}")
             raise wrap_external_error(e, ServiceUnavailableError, "SMTP server connection lost")
-        except smtplib.SMTPDataError as e:
-            logging.error(f"SMTP data error for {to_email}: {str(e)}")
-            raise wrap_external_error(e, ServiceUnavailableError, "Failed to send email data")
-        except smtplib.SMTPException as e:
-            logging.error(f"General SMTP error for {to_email}: {str(e)}")
-            raise wrap_external_error(e, ServiceUnavailableError, "Failed to send email")
         except Exception as e:
-            logging.error(f"Unexpected error sending email to {to_email}: {str(e)}")
-            raise wrap_external_error(e, ServiceUnavailableError, "Email sending failed")
+            logging.error(f"Failed to send email to {to_email}: {str(e)}")
+            raise wrap_external_error(e, ServiceUnavailableError, "Failed to send email")

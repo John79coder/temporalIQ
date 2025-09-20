@@ -1,4 +1,5 @@
 # app/auth/routes/api.py
+import logging
 from datetime import timedelta
 import uuid
 
@@ -234,6 +235,11 @@ def login(db: Session):
             )
             return make_response(jsonify(error_response), status_code)
 
+        # Add this: Store user_id in session for logout cache clearing fallback
+        session['user_id'] = user.id
+        session.permanent = True
+        session.modified = True
+
         # === NEW: Check if 2FA is enabled ===
         if user.two_factor_enabled:
             # Generate a temporary session token for 2FA verification
@@ -246,6 +252,11 @@ def login(db: Session):
                 current_app.config["JWT_SECRET_KEY"],
                 algorithm=current_app.config["JWT_ALGORITHM"]
             )
+
+            user_out = UserOut.model_validate(user).model_dump()
+
+            print("\n====================\nSerialized UserOut: %s\n==================", user_out)
+
             return jsonify({
                 "message": "2FA required",
                 "requires_2fa": True,
@@ -261,6 +272,9 @@ def login(db: Session):
             algorithm=current_app.config["JWT_ALGORITHM"]
         )
 
+        user_out = UserOut.model_validate(user).model_dump()
+        print("\n====================\nSerialized UserOut: %s\n==================", user_out)
+
         return jsonify({
             "message": "Login successful",
             "user": UserOut.model_validate(user).model_dump(),
@@ -272,6 +286,67 @@ def login(db: Session):
     except DatabaseError as e:
         error_response, status_code = format_error_response(DatabaseError(str(e)), 500)
         return make_response(jsonify(error_response), status_code)
+
+
+@bp.route("/logout", methods=["POST", "OPTIONS"])
+@limiter.limit("10 per minute")
+def logout():
+    """Handle user logout - no JWT required, with optional cache clearing"""
+    if request.method == "OPTIONS":
+        response = make_response()
+        response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', 'http://localhost:3000')
+        response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-CSRF-Token'
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+        return response
+
+    log_request_details("LOGOUT")
+
+    user_id = None
+    user_email = None
+    from flask import session
+
+    # Try to get user from JWT (if provided)
+    try:
+        if request.headers.get('Authorization'):
+            verify_jwt()
+            if hasattr(g, 'current_user'):
+                user_id = g.current_user.id
+                user_email = g.current_user.email
+    except Exception:
+        pass  # Continue if JWT invalid/missing
+
+    # Fallback: Check session for user_id
+    if not user_id and session.get('user_id'):
+        try:
+            authentication_service = current_app.extensions['app_context'].get_service('authentication_service')
+            user = authentication_service.user_repo.get_by_id(g.db, session['user_id'])
+            if user:
+                user_id = user.id
+                user_email = user.email
+        except Exception as e:
+            current_app.logger.warning(f"Session-based user lookup failed: {e}")
+
+    # Clear session
+    session.clear()
+
+    # Clear caches if user identified
+    if user_id:
+        try:
+            app_context = current_app.extensions.get('app_context')
+            if app_context and (caching_service := app_context.get_service('caching_service')):
+                caching_service.delete(f"auth:user:id:{user_id}")
+                if user_email:
+                    caching_service.delete(f"auth:user:email:{user_email}")
+                current_app.logger.info(f"Cleared cache for user {user_id}")
+        except Exception as e:
+            current_app.logger.warning(f"Cache clear failed: {e}")
+
+    response = make_response(jsonify({"message": "Logout successful", "success": True}), 200)
+    response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', 'http://localhost:3000')
+    response.headers['Access-Control-Allow-Credentials'] = 'true'
+    log_response_details("LOGOUT", response)
+    return response
 
 
 @bp.route("/verify", methods=["POST"])
@@ -553,9 +628,9 @@ def apple_signin(db: Session):
 
 # === NEW: 2FA Setup endpoint ===
 @bp.route("/2fa/setup", methods=["GET", "POST"])
-@verify_jwt
 @limiter.limit(limit("5 per minute"))
 @transactional_route()
+@verify_jwt
 def setup_2fa(db: Session):
     """GET: Returns QR code and secret for 2FA setup
        POST: Verifies the setup code and enables 2FA"""
@@ -688,9 +763,9 @@ def verify_2fa(db: Session):
 
 # === NEW: 2FA Disable endpoint ===
 @bp.route("/2fa/disable", methods=["POST"])
-@verify_jwt
 @limiter.limit(limit("5 per minute"))
 @transactional_route()
+@verify_jwt
 def disable_2fa(db: Session):
     """Disable 2FA for the current user"""
     authentication_service = current_app.extensions['app_context'].get_service('authentication_service')
@@ -715,13 +790,10 @@ def disable_2fa(db: Session):
 
 
 # === END 2FA Disable ===
-
-
-# === NEW: Backup Codes Management ===
 @bp.route("/2fa/backup-codes", methods=["GET", "POST"])
-@verify_jwt
 @limiter.limit(limit("5 per minute"))
 @transactional_route()
+@verify_jwt
 def manage_backup_codes(db: Session):
     """GET: Retrieve backup codes status
        POST: Regenerate backup codes"""
@@ -729,28 +801,29 @@ def manage_backup_codes(db: Session):
 
     if request.method == "GET":
         try:
-            # Check if user has 2FA enabled first`
-            user = authentication_service.user_repo.get_by_id(db, g.current_user.id)
-            if not user or not user.two_factor_enabled:
-                # Return empty info instead of error
-                return jsonify({
-                    "codes_remaining": 0,
-                    "two_factor_enabled": False
-                }), 200
+            # Add debug logging
+            current_app.logger.info(f"[2FA Status Check] User ID: {g.current_user.id}")
+
+            # Force fresh read from database
+            db.expire_all()
 
             codes_info = authentication_service.get_backup_codes_info(db, g.current_user.id)
+
+            current_app.logger.info(f"[2FA Status Check] Response: {codes_info}")
+
             return jsonify(codes_info), 200
+
         except AuthError as e:
-            # Don't return 400 for "2FA not enabled" - return data instead
-            if "2FA not enabled" in str(e):
-                return jsonify({
-                    "codes_remaining": 0,
-                    "two_factor_enabled": False
-                }), 200
-            error_response, status_code = format_error_response(e, 400)
+            current_app.logger.error(f"[2FA Status Check] AuthError: {str(e)}")
+            # User not found
+            error_response, status_code = format_error_response(e, 404)
+            return make_response(jsonify(error_response), status_code)
+        except Exception as e:
+            current_app.logger.error(f"[2FA Status Check] Exception: {str(e)}")
+            # Database or other errors
+            error_response, status_code = format_error_response(DatabaseError(str(e)), 500)
             return make_response(jsonify(error_response), status_code)
 
-# === END Backup Codes ===
 
 
 # EXISTING: Onboarding endpoint (unchanged)

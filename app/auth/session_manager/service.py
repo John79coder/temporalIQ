@@ -178,7 +178,6 @@ class AuthenticationService:
                         #     user.last_name = name_info["lastName"]
 
                     user.updated_at = TimeZone.utc_now()
-                    db.commit()
 
                     # Create default settings
                     self.features_service.create_default_settings(db, user.id)
@@ -283,7 +282,6 @@ class AuthenticationService:
             secret = pyotp.random_base32()
             # Temporarily store the secret (not enabled yet)
             user.two_factor_secret = secret
-            db.commit()
         else:
             secret = user.two_factor_secret
 
@@ -335,6 +333,7 @@ class AuthenticationService:
 
         # Clear cache
         self.caching_service.delete(f"auth:user:id:{user_id}")
+        self.caching_service.delete(f"auth:user:email:{user.email}")
 
         return {
             "success": True,
@@ -359,7 +358,6 @@ class AuthenticationService:
                     # Remove used backup code
                     user.backup_codes.pop(i)
                     user.updated_at = TimeZone.utc_now()
-                    db.commit()
                     return True
 
         return False
@@ -374,26 +372,38 @@ class AuthenticationService:
         user.two_factor_secret = None
         user.backup_codes = None
         user.updated_at = TimeZone.utc_now()
-        db.commit()
 
         # Clear cache
         self.caching_service.delete(f"auth:user:id:{user_id}")
+        self.caching_service.delete(f"auth:user:email:{user.email}")
 
         return True
 
     def get_backup_codes_info(self, db: Session, user_id: int) -> Dict[str, Any]:
-        """Get information about user's backup codes"""
+        """Get information about user's backup codes and 2FA status"""
+        # Clear any cache first
+        cache_key = f"auth:user:id:{user_id}"
+        self.caching_service.delete(cache_key)
+
+        # Force fresh read from database
+        db.expire_all()
+
         user = self.user_repo.get_by_id(db, user_id)
         if not user:
             raise AuthError("User not found")
 
-        if not user.two_factor_enabled:
-            raise AuthError("2FA not enabled")
+        # Log the actual database values
+        logging.info(
+            f"[get_backup_codes_info] User {user_id} - 2FA enabled: {user.two_factor_enabled}, backup_codes: {len(user.backup_codes) if user.backup_codes else 0}")
 
-        return {
+        result = {
             "codes_remaining": len(user.backup_codes) if user.backup_codes else 0,
-            "two_factor_enabled": user.two_factor_enabled
+            "two_factor_enabled": bool(user.two_factor_enabled)
         }
+
+        logging.info(f"[get_backup_codes_info] Returning: {result}")
+
+        return result
 
     def regenerate_backup_codes(self, db: Session, user_id: int) -> List[str]:
         """Regenerate backup codes for a user"""
@@ -410,7 +420,6 @@ class AuthenticationService:
         # Store hashed versions
         user.backup_codes = [pwd_context.hash(code) for code in backup_codes]
         user.updated_at = TimeZone.utc_now()
-        db.commit()
 
         # Clear cache
         self.caching_service.delete(f"auth:user:id:{user_id}")

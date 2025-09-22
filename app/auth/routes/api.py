@@ -1,5 +1,6 @@
 # app/auth/routes/api.py
 import logging
+import os
 from datetime import timedelta
 import uuid
 
@@ -207,7 +208,7 @@ def signup(db: Session):
         return make_response(jsonify(error_response), status_code)
 
 
-# === MODIFIED: Added 2FA check ===
+# Updated login function - replace lines 324-422
 @bp.route("/login", methods=["POST"])
 @limiter.limit(limit("10 per minute"))
 @transactional_route()
@@ -235,12 +236,12 @@ def login(db: Session):
             )
             return make_response(jsonify(error_response), status_code)
 
-        # Add this: Store user_id in session for logout cache clearing fallback
+        # Store user_id in session for logout cache clearing fallback
         session['user_id'] = user.id
         session.permanent = True
         session.modified = True
 
-        # === NEW: Check if 2FA is enabled ===
+        # Check if 2FA is enabled
         if user.two_factor_enabled:
             # Generate a temporary session token for 2FA verification
             temp_token = jwt.encode(
@@ -255,15 +256,12 @@ def login(db: Session):
 
             user_out = UserOut.model_validate(user).model_dump()
 
-            print("\n====================\nSerialized UserOut: %s\n==================", user_out)
-
             return jsonify({
                 "message": "2FA required",
                 "requires_2fa": True,
                 "temp_token": temp_token,
                 "user": UserOut.model_validate(user).model_dump()
             }), 200
-        # === END 2FA CHECK ===
 
         # No 2FA, proceed with normal login
         jwt_token = jwt.encode(
@@ -272,52 +270,86 @@ def login(db: Session):
             algorithm=current_app.config["JWT_ALGORITHM"]
         )
 
-        user_out = UserOut.model_validate(user).model_dump()
-        print("\n====================\nSerialized UserOut: %s\n==================", user_out)
-
-        return jsonify({
-            "message": "Login successful",
+        # Create response with JWT in body (for backward compatibility)
+        response_data = {
             "user": UserOut.model_validate(user).model_dump(),
-            "jwt": jwt_token
-        }), 200
+            "jwt": jwt_token  # Keep for backward compatibility
+        }
+
+        # Check if features service exists and create default settings
+        try:
+            features_service = current_app.extensions['app_context'].get_service('features_service')
+            if features_service and not features_service.has_settings(db, user.id):
+                features_service.create_default_settings(db, user.id)
+        except:
+            pass  # Features service optional
+
+        response = make_response(jsonify(response_data), 200)
+
+        # Add JWT as httpOnly cookie for enhanced security
+        is_production = os.getenv('FLASK_ENV') == 'production'
+        response.set_cookie(
+            'auth_token',
+            value=jwt_token,
+            max_age=86400,  # 24 hours
+            httponly=True,
+            secure=is_production,
+            samesite='Strict' if is_production else 'Lax',
+            path='/'
+        )
+
+        return response
+
     except AuthError as e:
-        error_response, status_code = format_error_response(AuthError(str(e)), 401)
+        error_response, status_code = format_error_response(e, 401)
         return make_response(jsonify(error_response), status_code)
     except DatabaseError as e:
-        error_response, status_code = format_error_response(DatabaseError(str(e)), 500)
+        error_response, status_code = format_error_response(e, 500)
         return make_response(jsonify(error_response), status_code)
 
 
 @bp.route("/logout", methods=["POST", "OPTIONS"])
-@limiter.limit("10 per minute")
-def logout():
-    """Handle user logout - no JWT required, with optional cache clearing"""
+@transactional_route()
+def logout(db: Session):
+    """Handle user logout"""
+
     if request.method == "OPTIONS":
         response = make_response()
         response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', 'http://localhost:3000')
         response.headers['Access-Control-Allow-Methods'] = 'POST, OPTIONS'
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization, X-CSRF-Token'
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type, X-CSRF-Token, X-CSRFToken, X-Request-ID'
         response.headers['Access-Control-Allow-Credentials'] = 'true'
         return response
 
     log_request_details("LOGOUT")
 
+    # Try to get user ID from JWT token first
     user_id = None
     user_email = None
-    from flask import session
 
-    # Try to get user from JWT (if provided)
-    try:
-        if request.headers.get('Authorization'):
-            verify_jwt()
-            if hasattr(g, 'current_user'):
-                user_id = g.current_user.id
-                user_email = g.current_user.email
-    except Exception:
-        pass  # Continue if JWT invalid/missing
+    # Check for token in cookie or header
+    token = None
+    if 'auth_token' in request.cookies:
+        token = request.cookies.get('auth_token')
+    elif 'Authorization' in request.headers:
+        auth_header = request.headers.get('Authorization')
+        if auth_header and auth_header.startswith('Bearer '):
+            token = auth_header.split(' ')[1]
 
-    # Fallback: Check session for user_id
-    if not user_id and session.get('user_id'):
+    if token:
+        try:
+            payload = jwt.decode(
+                token,
+                current_app.config["JWT_SECRET_KEY"],
+                algorithms=[current_app.config.get("JWT_ALGORITHM", "HS256")]
+            )
+            user_id = int(payload.get("sub"))
+        except:
+            pass  # Token might be invalid/expired, continue with session check
+
+    # Fallback to session if no JWT
+    if not user_id and 'user_id' in session:
+        user_id = session.get('user_id')
         try:
             authentication_service = current_app.extensions['app_context'].get_service('authentication_service')
             user = authentication_service.user_repo.get_by_id(g.db, session['user_id'])
@@ -343,6 +375,18 @@ def logout():
             current_app.logger.warning(f"Cache clear failed: {e}")
 
     response = make_response(jsonify({"message": "Logout successful", "success": True}), 200)
+
+    # Clear the auth cookie
+    response.set_cookie(
+        'auth_token',
+        value='',
+        max_age=0,  # Expire immediately
+        httponly=True,
+        secure=os.getenv('FLASK_ENV') == 'production',
+        samesite='Strict' if os.getenv('FLASK_ENV') == 'production' else 'Lax',
+        path='/'
+    )
+
     response.headers['Access-Control-Allow-Origin'] = request.headers.get('Origin', 'http://localhost:3000')
     response.headers['Access-Control-Allow-Credentials'] = 'true'
     log_response_details("LOGOUT", response)

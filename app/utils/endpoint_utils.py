@@ -6,7 +6,7 @@ import jwt
 import requests
 from flask import current_app, g, request
 
-from app.utils.exceptions import AuthError, DatabaseError, ServiceUnavailableError, wrap_external_error
+from app.utils.exceptions import AuthError, ServiceUnavailableError, wrap_external_error
 
 
 def csrf_protected(f):
@@ -32,19 +32,28 @@ def csrf_protected(f):
 
 
 def verify_jwt(f):
-    """JWT verification decorator - enhanced with session reuse"""
-
     @wraps(f)
-    def decorated(*args, **kwargs):
-        token = request.headers.get("Authorization")
+    def decorated_function(*args, **kwargs):
+        logging.info("Starting JWT verification")
+
+        token = None
+
+        # Try cookie first (more secure)
+        if 'auth_token' in request.cookies:
+            token = request.cookies.get('auth_token')
+            logging.info("Found token in cookie")
+        # Fall back to Authorization header for backward compatibility
+        elif 'Authorization' in request.headers:
+            auth_header = request.headers.get('Authorization')
+            if not auth_header or not auth_header.startswith('Bearer '):
+                logging.error("Invalid Authorization header format")
+                raise AuthError("Invalid Authorization header format")
+            token = auth_header.split(' ')[1]
+            logging.info("Found token in Authorization header")
+
         if not token:
-            logging.error("Missing Authorization header")
-            raise AuthError("Missing token")
-        if token.lower().startswith("bearer "):
-            token = token[len("Bearer "):].strip()
-        else:
-            logging.error("Invalid Authorization header format")
-            raise AuthError("Invalid Authorization header format")
+            logging.error("No authentication token provided")
+            raise AuthError("No authentication token provided")
 
         try:
             # Decode JWT using PyJWT
@@ -91,12 +100,11 @@ def verify_jwt(f):
             raise
         except Exception as e:
             logging.error(f"Unexpected error during JWT verification: {str(e)}")
-            raise DatabaseError("Failed to verify JWT")
+            raise AuthError("Unexpected authentication error")
 
         return f(*args, **kwargs)
 
-    return decorated
-
+    return decorated_function
 
 def verify_apple_jwt_token(token: str):
     """

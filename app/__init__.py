@@ -36,35 +36,36 @@ def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
 
+    # Determine environment
+    is_production = os.getenv('FLASK_ENV') == 'production'
+    is_testing = config_class.TESTING
+
     # Session configuration
-    if not config_class.TESTING:
+    if not is_testing:
         app.config["SESSION_TYPE"] = "redis"
         # Create Redis instance, not string
         app.config["SESSION_REDIS"] = Redis.from_url(
             os.getenv("REDIS_URL", "redis://localhost:6379/0")
         )
 
-        # Security settings for production
-        # Only enable HTTPS-only cookies if we're actually using HTTPS
-        is_https = os.getenv("FLASK_ENV") == "production" and os.getenv("USE_HTTPS", "false").lower() == "true"
-        app.config["SESSION_COOKIE_SECURE"] = is_https
+        # Security settings based on environment
+        app.config["SESSION_COOKIE_SECURE"] = is_production  # HTTPS only in production
         app.config["WTF_CSRF_TIME_LIMIT"] = 3600  # 1 hour expiry
         app.config["WTF_CSRF_HEADERS"] = ["X-CSRF-Token", "X-CSRFToken"]
     else:
         app.config["SESSION_TYPE"] = "filesystem"
         app.config["SESSION_FILE_DIR"] = os.path.join(tempfile.gettempdir(), "flask_session")
-        app.config["SESSION_COOKIE_SECURE"] = False
+        app.config["SESSION_COOKIE_SECURE"] = False  # Testing doesn't use HTTPS
 
     # Common session configuration
-    app.config["SESSION_COOKIE_DOMAIN"] = None
+    app.config["SESSION_COOKIE_DOMAIN"] = os.getenv("SESSION_COOKIE_DOMAIN", None)
     app.config["SESSION_PERMANENT"] = True
     app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=1)
     app.config["SESSION_USE_SIGNER"] = True
     app.config["SESSION_KEY_PREFIX"] = "myapp:"
     app.config["SESSION_COOKIE_NAME"] = "session"
     app.config["SESSION_COOKIE_HTTPONLY"] = True
-    app.config["SESSION_COOKIE_SAMESITE"] = None
-    app.config["SESSION_COOKIE_SECURE"] = False  # Only for development; set to True in production with HTTPS
+    app.config["SESSION_COOKIE_SAMESITE"] = "Strict" if is_production else "Lax"
 
     # Only use msgpack if available
     try:
@@ -83,7 +84,6 @@ def create_app(config_class=Config):
 
     Session(app)
 
-
     print("=== SESSION RUNTIME DIAG ===")
     print("Session interface:", type(app.session_interface).__name__)
     r = app.config.get("SESSION_REDIS")
@@ -99,7 +99,6 @@ def create_app(config_class=Config):
         print("SESSION_REDIS ping: FAIL ->", repr(e))
     print("SESSION_KEY_PREFIX:", app.config.get("SESSION_KEY_PREFIX"))
     print("===========================")
-
 
     print(f"SESSION_TYPE: {app.config['SESSION_TYPE']}")
     print(f"SESSION_REDIS: {app.config.get('SESSION_REDIS')}")
@@ -156,12 +155,9 @@ def create_app(config_class=Config):
     # app/__init__.py  (inside create_app, after csrf.init_app(app), near other error handlers)
     from flask_wtf.csrf import CSRFError
 
-    # still inside create_app, same handler you added
-    from flask_wtf.csrf import CSRFError
-
     @app.errorhandler(CSRFError)
     def handle_csrf_error(e):
-        from flask import request, jsonify, session
+        from flask import request, jsonify, session, current_app
         if hasattr(current_app, 'logger_instance'):
             current_app.logger_instance.debug(f"CSRF Error Details - Request Cookies: {request.cookies}")
             current_app.logger_instance.debug(f"CSRF Error Details - Session Keys: {list(session.keys())}")
@@ -251,7 +247,7 @@ def create_app(config_class=Config):
     app.register_blueprint(entitlements_bp)
     app.register_blueprint(analytics_bp)
 
-    # Request lifecycle hooks - COMBINED into single before_request
+    # Request lifecycle hooks
     @app.before_request
     def before_request():
         """Set up request context, check Redis, and logging"""
@@ -290,7 +286,10 @@ def create_app(config_class=Config):
 
     @app.after_request
     def after_request(response):
-        """Log response and add custom headers"""
+        """
+        Log response, add request ID, flush analytics, and set security headers.
+        (Security headers are merged here from the earlier implementation.)
+        """
         # Log response (detailed logging handled by middleware)
         if hasattr(app, 'logger_instance'):
             app.logger_instance.log_response(response)
@@ -298,6 +297,32 @@ def create_app(config_class=Config):
         # Add request ID to response headers
         if hasattr(g, 'request_id'):
             response.headers['X-Request-ID'] = g.request_id
+
+        # === Security headers (from removed top-level after_request) ===
+        # Prevent clickjacking attacks
+        response.headers['X-Frame-Options'] = 'DENY'
+
+        # Basic CSP - adjust as needed for your application
+        response.headers['Content-Security-Policy'] = (
+            "default-src 'self'; "
+            "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com; "
+            "style-src 'self' 'unsafe-inline'; "
+            "frame-ancestors 'none'"
+        )
+
+        # Prevent MIME type sniffing
+        response.headers['X-Content-Type-Options'] = 'nosniff'
+
+        # Control information sent in Referer header
+        response.headers['Referrer-Policy'] = 'strict-origin-when-cross-origin'
+
+        # Enable browser XSS protection (legacy browsers)
+        response.headers['X-XSS-Protection'] = '1; mode=block'
+
+        # HSTS for production only (enforce HTTPS for 1 year including subdomains)
+        if os.getenv('FLASK_ENV') == 'production':
+            response.headers['Strict-Transport-Security'] = 'max-age=31536000; includeSubDomains'
+        # === end security headers ===
 
         # Flush analytics events if buffer is getting full
         if hasattr(app, 'event_tracker'):
@@ -470,7 +495,6 @@ def create_app(config_class=Config):
             environment=config_class.__name__
         )
 
-    from flask import current_app
     print("=== SESSION DEBUG ===")
     print("Interface:", type(app.session_interface).__name__)
     print("SESSION_TYPE:", app.config.get("SESSION_TYPE"))

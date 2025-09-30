@@ -43,16 +43,29 @@ class NotionAuthService:
             except requests.RequestException as e:
                 raise wrap_external_error(e, NotionError, "Failed to exchange Notion auth code")
 
-        required_fields = ["access_token", "refresh_token", "expires_in", "workspace_id"]
+        # Notion may omit refresh_token and expires_in; require only what they guarantee.
+        required_fields = ["access_token", "workspace_id"]
         missing_fields = [field for field in required_fields if field not in response_data]
         if missing_fields:
             raise NotionError(f"Notion OAuth response missing required fields: {', '.join(missing_fields)}")
 
-        expires_at = TimeZone.utc_now() + timedelta(seconds=response_data["expires_in"])
+        # Optional fields
+        expires_in_val = response_data.get("expires_in")
+        refresh_token_plain = response_data.get("refresh_token")
+
+        # Compute expires_at and cache TTL safely when expires_in is absent.
+        if isinstance(expires_in_val, (int, float)) and expires_in_val > 0:
+            expires_at = TimeZone.utc_now() + timedelta(seconds=int(expires_in_val))
+            cache_ttl = min(86400, int(expires_in_val))
+        else:
+            # Notion access tokens typically do not expire; set a far-future timestamp and a sane cache TTL.
+            expires_at = TimeZone.utc_now() + timedelta(days=3650)  # ~10 years
+            cache_ttl = 86400  # 1 day
+
         conn = NotionConnection(
             user_id=token_data.user_id,
             access_token=self.encryptor.encrypt(response_data["access_token"]),
-            refresh_token=self.encryptor.encrypt(response_data["refresh_token"]),
+            refresh_token=self.encryptor.encrypt(refresh_token_plain) if refresh_token_plain else None,
             expires_at=expires_at,
             workspace_id=response_data["workspace_id"]
         )
@@ -72,7 +85,7 @@ class NotionAuthService:
                 'updated_at': TimeZone.serialize_datetime(conn.updated_at) if conn.updated_at else None,
                 'workspace_id': conn.workspace_id
             },
-            timeout=min(86400, response_data["expires_in"])  # NEW: Respect token expiration
+            timeout=cache_ttl
         )
         return conn
 
@@ -98,14 +111,26 @@ class NotionAuthService:
                 except requests.RequestException as e:
                     raise wrap_external_error(e, NotionError, "Failed to refresh Notion token")
 
-            required_fields = ["access_token", "refresh_token", "expires_in", "workspace_id"]
+            # On refresh, Notion may not return a new refresh_token or expires_in.
+            required_fields = ["access_token", "workspace_id"]
             missing_fields = [field for field in required_fields if field not in response_data]
             if missing_fields:
                 raise NotionError(f"Notion OAuth refresh response missing required fields: {', '.join(missing_fields)}")
 
-            conn.access_token = self.encryptor.encrypt(response_data["access_token"])
-            conn.refresh_token = self.encryptor.encrypt(response_data["refresh_token"])
-            conn.expires_at = TimeZone.utc_now() + timedelta(seconds=response_data["expires_in"])
+            new_access_token = response_data["access_token"]
+            new_refresh_token = response_data.get("refresh_token")
+            expires_in_val = response_data.get("expires_in")
+
+            conn.access_token = self.encryptor.encrypt(new_access_token)
+            if new_refresh_token:
+                conn.refresh_token = self.encryptor.encrypt(new_refresh_token)
+            if isinstance(expires_in_val, (int, float)) and expires_in_val > 0:
+                conn.expires_at = TimeZone.utc_now() + timedelta(seconds=int(expires_in_val))
+                cache_ttl = min(86400, int(expires_in_val))
+            else:
+                # Preserve previous expires_at if Notion didn't send a duration; keep sane cache TTL.
+                cache_ttl = 86400
+
             conn.updated_at = TimeZone.utc_now()
             conn.workspace_id = response_data["workspace_id"]
 
@@ -124,7 +149,7 @@ class NotionAuthService:
                     'updated_at': TimeZone.serialize_datetime(conn.updated_at) if conn.updated_at else None,
                     'workspace_id': conn.workspace_id
                 },
-                timeout=min(86400, response_data["expires_in"])  # NEW: Respect token expiration
+                timeout=cache_ttl
             )
             return conn
         except requests.RequestException as e:

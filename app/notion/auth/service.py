@@ -83,7 +83,8 @@ class NotionAuthService:
                 'expires_at': TimeZone.serialize_datetime(conn.expires_at),
                 'created_at': TimeZone.serialize_datetime(conn.created_at),
                 'updated_at': TimeZone.serialize_datetime(conn.updated_at) if conn.updated_at else None,
-                'workspace_id': conn.workspace_id
+                'workspace_id': conn.workspace_id,
+                'user_id': conn.user_id
             },
             timeout=cache_ttl
         )
@@ -147,7 +148,8 @@ class NotionAuthService:
                     'expires_at': TimeZone.serialize_datetime(conn.expires_at),
                     'created_at': TimeZone.serialize_datetime(conn.created_at),
                     'updated_at': TimeZone.serialize_datetime(conn.updated_at) if conn.updated_at else None,
-                    'workspace_id': conn.workspace_id
+                    'workspace_id': conn.workspace_id,
+                    'user_id': conn.user_id
                 },
                 timeout=cache_ttl
             )

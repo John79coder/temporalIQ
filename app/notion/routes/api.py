@@ -299,11 +299,29 @@ def preview_mapping():
 @csrf_protected
 @limiter.limit(limit("2 per minute"))
 def generate_from_page() -> Response:
+    # ——— logging (added) ———
+    logger = current_app.extensions['app_context'].get_service('app_logger')
+    if logger:
+        logger.info(
+            "NOTION: generate_from_page start",
+            user_id=getattr(g, "current_user", None) and g.current_user.id
+        )
+    # ——— end logging ———
 
     entitlements = current_app.extensions['app_context'].get_service('entitlements_service')
 
     quota_check = entitlements.check_quota(g.db, g.current_user.id, 'ai_generations', 1)
     if not quota_check.allowed:
+        # ——— logging (added) ———
+        if logger:
+            logger.info(
+                "NOTION: quota exceeded for page candidates",
+                user_id=g.current_user.id,
+                remaining=quota_check.remaining,
+                limit=quota_check.limit,
+                reset_date=quota_check.reset_date.isoformat(),
+            )
+        # ——— end logging ———
         response_body = {
             "error": "quota_exceeded",
             "message": f"Monthly AI generation limit reached ({quota_check.limit} generations)",
@@ -318,23 +336,63 @@ def generate_from_page() -> Response:
     data = request.json
     page_id = data.get("page_id")
     if not page_id:
+        # ——— logging (added) ———
+        if logger:
+            logger.warning("NOTION: missing page_id in request", user_id=g.current_user.id)
+        # ——— end logging ———
         return make_handled_error_response(DataValidationError, "Missing page_id", 400)
 
     force_single_task = data.get("force_single_task", False)
+    # ——— logging (added) ———
+    if logger:
+        logger.debug(
+            "NOTION: request params",
+            user_id=g.current_user.id,
+            page_id=page_id,
+            force_single_task=force_single_task
+        )
+    # ——— end logging ———
 
     try:
         conn = get_notion_connection(g.current_user.id)
         if not conn:
+            # ——— logging (added) ———
+            if logger:
+                logger.warning("NOTION: no Notion connection found", user_id=g.current_user.id)
+            # ——— end logging ———
             return make_handled_error_response(NotionError, "No Notion connection found", 404)
 
         token = conn.access_token
         blocks_cache_key = f"notion:page_blocks:{page_id}"
         blocks = current_app.extensions['app_context'].get_service('caching_service').get(blocks_cache_key)
 
-        if not blocks:
+        if blocks:
+            # ——— logging (added) ———
+            if logger:
+                logger.info(
+                    "NOTION: page blocks cache hit",
+                    user_id=g.current_user.id,
+                    page_id=page_id,
+                    blocks_count=len(blocks)
+                )
+            # ——— end logging ———
+        else:
+            # ——— logging (added) ———
+            if logger:
+                logger.info("NOTION: page blocks cache miss; fetching", user_id=g.current_user.id, page_id=page_id)
+            # ——— end logging ———
             try:
                 blocks = client().fetch_page_blocks(token, page_id)
             except NotionError as e:
+                # ——— logging (added) ———
+                if logger:
+                    logger.error(
+                        "NOTION: failed to fetch Notion page blocks",
+                        user_id=g.current_user.id,
+                        page_id=page_id,
+                        exception=e
+                    )
+                # ——— end logging ———
                 return make_handled_error_response(NotionError, f"Failed to fetch Notion page blocks: {str(e)}", 400)
 
             current_app.extensions['app_context'].get_service('caching_service').set(
@@ -342,22 +400,66 @@ def generate_from_page() -> Response:
                 blocks,
                 timeout=3600
             )
+            # ——— logging (added) ———
+            if logger:
+                logger.info(
+                    "NOTION: cached page blocks",
+                    user_id=g.current_user.id,
+                    page_id=page_id,
+                    blocks_count=len(blocks)
+                )
+            # ——— end logging ———
 
         candidates = current_app.extensions['app_context'].get_service('page_extraction_engine').generate_candidates(
             blocks, g.db, g.current_user.id, page_id, force_single_task
         )
+        # ——— logging (added) ———
+        if logger:
+            logger.info(
+                "NOTION: generated task candidates",
+                user_id=g.current_user.id,
+                page_id=page_id,
+                candidates_count=len(candidates or [])
+            )
+        # ——— end logging ———
 
         current_app.extensions['app_context'].get_service('mapping_service').save_task_candidates(g.db, candidates)
+        # ——— logging (added) ———
+        if logger:
+            logger.info(
+                "NOTION: saved task candidates",
+                user_id=g.current_user.id,
+                page_id=page_id,
+                candidates_count=len(candidates or [])
+            )
+        # ——— end logging ———
 
         return jsonify([
             TaskCandidateOut.model_validate(c).model_dump(mode="json")
             for c in candidates
         ])
     except NotionError as e:
+        # ——— logging (added) ———
+        if logger:
+            logger.error("NOTION: NotionError during page candidate generation", user_id=g.current_user.id, page_id=page_id, exception=e)
+        # ——— end logging ———
         return make_handled_error_response(NotionError, str(e), 400)
     except DatabaseError as e:
+        # ——— logging (added) ———
+        if logger:
+            logger.error("NOTION: DatabaseError during page candidate generation", user_id=g.current_user.id, page_id=page_id, exception=e)
+        # ——— end logging ———
         return make_handled_error_response(DatabaseError, str(e), 500)
     except DataValidationError as e:
+        # ——— logging (added) ———
+        if logger:
+            logger.error("NOTION: DataValidationError during page candidate generation", user_id=g.current_user.id, page_id=page_id, exception=e)
+        # ——— end logging ———
         return make_handled_error_response(DataValidationError, str(e), 400)
     except ServiceUnavailableError as e:
+        # ——— logging (added) ———
+        if logger:
+            logger.error("NOTION: ServiceUnavailableError during page candidate generation", user_id=g.current_user.id, page_id=page_id, exception=e)
+        # ——— end logging ———
         return make_handled_error_response(ServiceUnavailableError, str(e), 500)
+

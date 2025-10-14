@@ -50,26 +50,61 @@ class NotionClient:
         logging.info("Successfully listed Notion databases")
         return response.json().get("results", [])
 
-    # NEW: Added method for fetching page blocks recursively
     @retry(stop=stop_after_attempt(3), wait=wait_fixed(2), retry=retry_if_exception_type(requests.RequestException))
     def fetch_page_blocks(self, access_token: str, page_id: str) -> List[Dict]:
+        from flask import current_app
+        import time
+
+        logger = None
+        try:
+            logger = current_app.extensions['app_context'].get_service('app_logger')
+        except Exception:
+            pass
+
         def fetch_children(block_id: str, cursor: Optional[str] = None) -> List[Dict]:
-            headers = {"Authorization": f"Bearer {self.encryptor.decrypt(access_token)}",
-                       "Notion-Version": "2022-06-28"}
+            headers = {
+                "Authorization": f"Bearer {self.encryptor.decrypt(access_token)}",
+                "Notion-Version": "2022-06-28"
+            }
             params = {"page_size": 100}
             if cursor:
                 params["start_cursor"] = cursor
-            response = requests.get(f"{self.base_url}/blocks/{block_id}/children", headers=headers, params=params)
-            response.raise_for_status()
-            data = response.json()
+
+            t0 = time.perf_counter()
+            resp = requests.get(f"{self.base_url}/blocks/{block_id}/children", headers=headers, params=params)
+            resp.raise_for_status()
+            data = resp.json()
             results = data.get("results", [])
+
+            if logger:
+                logger.debug(
+                    "NOTION_CLIENT.blocks.page",
+                    page_or_block_id=block_id,
+                    batch_count=len(results),
+                    has_more=bool(data.get("has_more")),
+                    duration_ms=int((time.perf_counter() - t0) * 1000),
+                    status_code=resp.status_code,
+                )
+
             if data.get("has_more"):
                 results += fetch_children(block_id, data["next_cursor"])
+
             for block in results:
                 if block.get("has_children"):
                     block["children"] = fetch_children(block["id"])
+
             return results
 
-        results = fetch_children(page_id)
-        logging.info(f"Successfully fetched blocks for page {page_id}")
-        return results
+        t_all0 = time.perf_counter()
+        blocks = fetch_children(page_id)
+        if logger:
+            first_types = list({b.get('type') for b in blocks})[:5]
+            logger.info(
+                "NOTION_CLIENT.fetched_blocks",
+                page_id=page_id,
+                blocks_count=len(blocks),
+                first_types=first_types,
+                duration_ms=int((time.perf_counter() - t_all0) * 1000),
+            )
+        return blocks
+

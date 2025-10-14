@@ -26,3 +26,4 @@ class TaskCandidateData(BaseModel):
     tags: Optional[List[str]] = Field(default_factory=list)
     alternatives: Optional[Dict[str, List[str]]] = Field(default_factory=dict)
     source_block_ids: Optional[List[str]] = None
+    created_at: datetime = Field(default_factory=lambda: datetime.utcnow())

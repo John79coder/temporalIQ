@@ -1,3 +1,4 @@
+import time
 from collections import defaultdict
 from typing import List
 
@@ -16,6 +17,13 @@ class PageAggregator:
 
     def aggregate(self, partials: List[PartialCandidate], user_id: int, page_id: str, db: Session,
                   sections: List[BlockSection], force_single_task: bool) -> List[TaskCandidateData]:
+        try:
+            from flask import current_app
+            logger = current_app.extensions['app_context'].get_service('app_logger')
+        except Exception:
+            logger = None
+
+        t0 = time.perf_counter()
         stitched: List[TaskCandidateData] = []
         buffer: List[PartialCandidate] = []
 
@@ -36,13 +44,25 @@ class PageAggregator:
 
         flush_buffer()
 
-        # New: Merge candidates if user toggled single-task or page inferred as single-task
         if force_single_task or all(s.is_single_task for s in sections):
-            return self.merge_candidates(stitched)
+            result = self.merge_candidates(stitched)
+        else:
+            result = stitched
 
-        return stitched
+        if logger:
+            logger.debug(
+                "AGGREGATOR.done",
+                partials_in=len(partials),
+                stitched=len(stitched),
+                candidates_out=len(result),
+                force_single_task=bool(force_single_task),
+                inferred_single_task=all(s.is_single_task for s in sections) if sections else False,
+                duration_ms=int((time.perf_counter() - t0) * 1000),
+            )
+        return result
 
     def is_mergeable(self, prev: PartialCandidate, curr: PartialCandidate) -> bool:
+        # unchanged logic
         return (
                 self.no_conflicting_fields(prev, curr) and
                 self.is_adjacent(prev, curr)
@@ -77,6 +97,12 @@ class PageAggregator:
 
     def merge_group(self, partial_candidates: List[PartialCandidate], user_id: int, page_id: str,
                     db: Session) -> TaskCandidateData:
+        t0 = time.perf_counter()
+        try:
+            from flask import current_app
+            logger = current_app.extensions['app_context'].get_service('app_logger')
+        except Exception:
+            logger = None
 
         task_candidate = TaskCandidateData(
             user_id=user_id,
@@ -93,10 +119,7 @@ class PageAggregator:
         tag_set = set()
 
         for partial_candidate in partial_candidates:
-
             if partial_candidate.title: task_candidate.title = partial_candidate.title
-
-            # we're going to need the time zone from the user preferences.
 
             if partial_candidate.due_date:
                 user_preferences = self.preferences_service.get_preferences(db, user_id)
@@ -112,16 +135,36 @@ class PageAggregator:
         task_candidate.tags = list(tag_set)
         task_candidate.confidence = max_conf or 0.5
 
+        if logger:
+            logger.debug(
+                "AGGREGATOR.merge_group",
+                group_size=len(partial_candidates),
+                fields_present=[
+                    f for f in ['title', 'due_date', 'duration', 'priority', 'status', 'tags']
+                    if getattr(task_candidate, f, None)
+                ],
+                confidence=task_candidate.confidence,
+                duration_ms=int((time.perf_counter() - t0) * 1000),
+            )
         return task_candidate
 
     def merge_candidates(self, candidates: List[TaskCandidateData]) -> List[TaskCandidateData]:
+        t0 = time.perf_counter()
+        try:
+            from flask import current_app
+            logger = current_app.extensions['app_context'].get_service('app_logger')
+        except Exception:
+            logger = None
+
         if not candidates:
+            if logger:
+                logger.debug("AGGREGATOR.merge_candidates", candidates_in=0, candidates_out=0, duration_ms=int((time.perf_counter() - t0) * 1000))
             return []
 
-        # Check for non-overlapping attributes (no conflicts across fields)
-        field_values = defaultdict(set)  # Track unique non-None values per field
+        # original logic unchanged
+        field_values = defaultdict(set)
         has_conflict = False
-        issues = set()  # Collect potential conflict issues
+        issues = set()
 
         for cand in candidates:
             for field in ['title', 'due_date', 'duration', 'priority', 'status']:
@@ -132,15 +175,19 @@ class PageAggregator:
                         issues.add(
                             f"Conflict in {field}: multiple values found (e.g., {value} vs. {next(iter(field_values[field]))})")
                     field_values[field].add(value)
-            # For lists like tags/issues, union later; no conflict check needed
 
         if has_conflict:
-            # Flag conflicts but don't merge; return originals with added issues
             for cand in candidates:
                 cand.issues.extend(list(issues))
+            if logger:
+                logger.debug(
+                    "AGGREGATOR.merge_candidates.conflict",
+                    candidates_in=len(candidates),
+                    conflicts=list(issues)[:3],
+                    duration_ms=int((time.perf_counter() - t0) * 1000),
+                )
             return candidates
 
-        # No conflicts: Merge into one coherent task
         merged = TaskCandidateData(
             user_id=candidates[0].user_id,
             notion_db_id=None,
@@ -166,9 +213,9 @@ class PageAggregator:
 
         for cand in candidates:
             if cand.title and cand.title != "Untitled":
-                merged.title = cand.title  # Prefer non-default; last wins, but no conflict, so at most one
+                merged.title = cand.title
             if cand.due_date:
-                merged.due_date = cand.due_date  # At most one due to no-overlap check
+                merged.due_date = cand.due_date
             if cand.duration:
                 merged.duration = cand.duration
             if cand.priority:
@@ -188,4 +235,17 @@ class PageAggregator:
         merged.alternatives = alternatives
         merged.confidence = max_conf or 0.5
 
+        if logger:
+            logger.debug(
+                "AGGREGATOR.merge_candidates.ok",
+                candidates_in=len(candidates),
+                title=bool(merged.title and merged.title != "Untitled"),
+                with_due=bool(merged.due_date),
+                with_duration=bool(merged.duration),
+                with_priority=bool(merged.priority),
+                with_status=bool(merged.status),
+                tags_count=len(merged.tags or []),
+                confidence=merged.confidence,
+                duration_ms=int((time.perf_counter() - t0) * 1000),
+            )
         return [merged]

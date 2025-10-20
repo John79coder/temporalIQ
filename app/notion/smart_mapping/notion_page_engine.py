@@ -50,14 +50,13 @@ class NotionPageEngine:
 
     def _register_extractors(self):
         """Register all page value extractors."""
-        self.registry.register_detector(TitleExtractor(self.features_service))
-        self.registry.register_detector(DueDateExtractor(self.features_service))
-        self.registry.register_detector(PriorityExtractor(self.features_service))
-        self.registry.register_detector(DurationExtractor(self.features_service))
-        self.registry.register_detector(UrgencyClassifier(self.features_service, self.logging_service))
-        self.registry.register_detector(CompletionExtractor(self.features_service))
-        self.registry.register_detector(TagExtractor(self.features_service))
-        self.registry.register_detector(DescriptionExtractor(self.features_service))
+        self.registry.register_detector(TitleExtractor(self.features_service, self.logging_service))
+        self.registry.register_detector(DueDateExtractor(self.features_service, self.logging_service))
+        self.registry.register_detector(PriorityExtractor(self.features_service, self.logging_service))
+        self.registry.register_detector(DurationExtractor(self.features_service, self.logging_service))
+        self.registry.register_detector(CompletionExtractor(self.features_service, self.logging_service))
+        self.registry.register_detector(TagExtractor(self.features_service, self.logging_service))
+        self.registry.register_detector(DescriptionExtractor(self.features_service, self.logging_service))
 
     def generate_candidates(
             self,

@@ -1,5 +1,6 @@
-📘 TemporalIQ — AI‑Assisted Scheduling & Time‑Blocking Engine
-TemporalIQ is a full‑stack, AI‑powered scheduling system that integrates with Notion and iCloud Calendar to intelligently extract tasks, prioritize them, and generate optimized time‑blocks based on user preferences, constraints, and learned behavior.
+TemporalIQ — AI‑Assisted Scheduling and Time‑Blocking Engine
+
+TemporalIQ is an AI‑powered scheduling system that integrates with Notion and iCloud Calendar to intelligently extract tasks, prioritize them, and generate optimized time‑blocks based on user preferences, constraints, and learned behavior.
 
 It combines:
 
@@ -15,10 +16,12 @@ iCloud CalDAV for calendar sync
 
 AI‑assisted ranking and block generation
 
-A React + TypeScript frontend (not included in this repo)
+A React and TypeScript frontend (separate repository)
 
-🚀 Features
+FEATURES
+
 AI‑Assisted Scheduling
+
 Learns urgency patterns from user behavior
 
 Ranks tasks using NLP, embeddings, heuristics, and due‑date scoring
@@ -26,11 +29,13 @@ Ranks tasks using NLP, embeddings, heuristics, and due‑date scoring
 Generates optimized time‑blocks with constraints
 
 Deep Integrations
+
 Notion: Extracts tasks, pages, and metadata
 
 iCloud Calendar: Reads events, writes generated blocks
 
 User Preferences System
+
 Block size
 
 Max blocks per day
@@ -41,12 +46,14 @@ Weekend behavior
 
 Time zone
 
-All validated with DB‑level constraints
+All validated with database‑level constraints
 
-Caching & Performance
+Caching and Performance
+
 Redis‑backed caching for Notion pages, iCloud events, and scheduling results
 
 Clean Architecture
+
 Repository pattern
 
 Service layer
@@ -57,22 +64,24 @@ Domain‑specific error handling
 
 Fully tested with pytest
 
-🏗 Architecture Overview
-Code
+ARCHITECTURE OVERVIEW
+
 app/
-├── auth/                     # Authentication & user management
-├── user_preferences/         # Preferences models, repo, service, routes
-├── features/                 # AI feature toggles & learning scopes
-├── scheduling/               # Task prioritizer, block generator, free time finder
-├── notion/                   # Notion extraction engine
-├── icloud/                   # CalDAV client manager & event service
-├── repositories/             # Base repository abstractions
-├── utils/                    # Time zone, exceptions, helpers
-└── main.py                   # Flask app entrypoint
+auth/                      Authentication and user management
+user_preferences/          Preferences models, repository, service, routes
+features/                  AI feature toggles and learning scopes
+scheduling/                Task prioritizer, block generator, free time finder
+notion/                    Notion extraction engine
+icloud/                    CalDAV client manager and event service
+repositories/              Base repository abstractions
+utils/                     Time zone, exceptions, helpers
+main.py                    Flask app entrypoint
+
 Key Architectural Concepts
+
 ServiceFactory wires all services with dependency injection
 
-Repositories encapsulate DB access
+Repositories encapsulate database access
 
 Services contain business logic
 
@@ -80,42 +89,41 @@ Routes are thin controllers
 
 Models are SQLAlchemy entities
 
-Schemas are Pydantic request/response objects
+Schemas are Pydantic request and response objects
 
-⚙️ Installation
-1. Clone the repo
-bash
-git clone https://github.com/yourusername/temporalIQ.git
+INSTALLATION
+
+Clone the repository
+git clone https://github.com/yourusername/temporalIQ.git (github.com in Bing)
 cd temporalIQ
-2. Create a virtual environment
-bash
-python -m venv .venv
-source .venv/bin/activate  # macOS/Linux
-.venv\Scripts\activate     # Windows
-3. Install dependencies
-bash
-pip install -r requirements.txt
-4. Set environment variables
-Create .env:
 
-Code
+Create a virtual environment
+python -m venv .venv
+source .venv/bin/activate   (macOS/Linux)
+.venv\Scripts\activate      (Windows)
+
+Install dependencies
+pip install -r requirements.txt
+
+Create a .env file with:
 DATABASE_URL=postgresql://...
 REDIS_URL=redis://...
 NOTION_API_KEY=...
 ICLOUD_USERNAME=...
 ICLOUD_PASSWORD=...
 SECRET_KEY=...
-5. Run database migrations
-bash
-alembic upgrade head
-6. Start the server
-bash
-flask run
-🧪 Testing
-Run the full test suite:
 
-bash
+Run database migrations
+alembic upgrade head
+
+Start the server
+flask run
+
+TESTING
+
+Run the full test suite:
 pytest -q
+
 Tests cover:
 
 User preference endpoints
@@ -130,7 +138,8 @@ Authorization
 
 Error handling
 
-🔌 API Endpoints
+API ENDPOINTS
+
 POST /user/preferences
 Set or update user preferences.
 
@@ -146,9 +155,9 @@ Fetch and aggregate Notion pages.
 GET /icloud/events
 Retrieve iCloud calendar events.
 
-🧠 AI Components
+AI COMPONENTS
+
 Task Prioritizer
-Uses:
 
 Due‑date scoring
 
@@ -161,20 +170,18 @@ Learned user behavior
 Time‑zone normalization
 
 Time Block Generator
-Respects:
 
-User preferences
+Respects user preferences
 
-Work hours
+Respects work hours
 
-Max blocks per day
+Respects max blocks per day
 
-Existing calendar events
+Avoids existing calendar events
 
-Free time windows
+Fills free time windows
 
 Feature Toggles
-User‑specific AI settings:
 
 NLP urgency
 
@@ -184,7 +191,8 @@ Heuristic scoring
 
 Learning scopes
 
-🛡 Error Handling
+ERROR HANDLING
+
 TemporalIQ uses a structured error system:
 
 DatabaseError
@@ -203,11 +211,12 @@ Max blocks per day must be positive
 
 Work hours must be positive
 
-🤝 Contributing
-Fork the repo
+CONTRIBUTING
+
+Fork the repository
 
 Create a feature branch
 
 Write tests
 
-Submit a PR
+Submit a pull request

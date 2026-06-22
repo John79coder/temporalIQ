@@ -98,8 +98,13 @@ def test_get_preferences__success(authorized_client, db_session, app, test_user)
         g.db = db_session
         g.current_user = db_session.get(User, user_id)
 
-        user_preferences = UserPreferences(user_id=user_id, block_size_minutes=30, allow_weekends=False,
-                                           max_blocks_per_day=16, work_hours=7.6)
+        user_preferences = UserPreferences(
+            user_id=user_id,
+            block_size_minutes=30,
+            allow_weekends=False,
+            max_blocks_per_day=16,
+            work_hours=7.6
+        )
 
         db_session.add(user_preferences)
         db_session.commit()

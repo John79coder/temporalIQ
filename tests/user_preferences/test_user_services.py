@@ -11,15 +11,21 @@ def test_preferences_service_save_preferences(caching_service, db_session, app):
         user = User(email="test@example.com", hashed_password="hashed")
         db_session.add(user)
         db_session.commit()
+
         service = PreferencesService(PreferencesRepository(), caching_service)
-        prefs = PreferencesCreate(
+
+        user_preferences = PreferencesCreate(
             user_id=user.id,
             block_size_minutes=60,
             max_blocks_per_day=8,
             work_hours=8.0,
             allow_weekends=True
         )
-        service.save_preferences(db_session, prefs)
+
+        service.save_preferences(db_session, user_preferences)
         retrieved = db_session.query(UserPreferences).filter_by(user_id=user.id).first()
+
         assert retrieved.block_size_minutes == 60
+        assert retrieved.max_blocks_per_day == 8
         assert retrieved.work_hours == 8.0
+        assert retrieved.allow_weekends == True

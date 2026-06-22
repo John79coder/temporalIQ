@@ -64,7 +64,7 @@ def test_signup_invalid_input(authorized_client, db_session, app):
 
         assert response.status_code == 400
         assert "email address" in response.json["detail"]
-    assert "Password must be at least 8 characters" in response.json["detail"]
+        assert "Password must be at least 8 characters" in response.json["detail"]
 
 
 def test_signup_missing_csrf(client, db_session, app):
@@ -73,12 +73,10 @@ def test_signup_missing_csrf(client, db_session, app):
     try:
         with app.app_context():
 
-            _ = client.csrf_token
-
             response = client.post("/auth/signup", json={
                 "email": "test@example.com",
                 "password": "Secure123!"
-            }, headers={"X-CSRF-Token": "abc.def.ghi"})
+            })
 
             assert response.status_code == 403
             assert "Invalid CSRF token" in response.json["detail"]

@@ -9,7 +9,10 @@ from app.auth.models.entities import VerificationToken
 from app.utils.exceptions import AuthError
 from tests.conftest import PASSWORD_CONTEXT
 
-
+"""
+    This test verifies that a User object can be created and persisted correctly.
+    LAYER: ORM model + DB integration.
+"""
 def test_user_model_creation(db_session):
     user = User(
         email="test@example.com",
@@ -27,6 +30,10 @@ def test_user_model_creation(db_session):
     assert user.is_verified is False
 
 
+"""
+    This test ensures that a VerificationToken with an expired timestamp is stored correctly and can be retrieved.
+    LAYER: ORM model + datetime handling.
+"""
 def test_verification_token_expiration(db_session, test_user):
     user, _ = test_user
 
@@ -43,7 +50,10 @@ def test_verification_token_expiration(db_session, test_user):
 
     assert retrieved.expires_at.replace(tzinfo=timezone.utc) < datetime.now(timezone.utc)
 
-
+"""
+    Verify that invalid emails are rejected at the database level, not just at the service or schema level.
+    LAYER: Database constraints (CHECK constraints)    
+"""
 def test_user_model_invalid_email(db_session):
     user = User(
         email="invalid-email",
@@ -55,7 +65,10 @@ def test_user_model_invalid_email(db_session):
     with pytest.raises(IntegrityError, match="valid_email"):
         db_session.commit()
 
-
+"""
+    Ensure tokens cannot exist without a user.
+    LAYER: Data.
+"""
 def test_verification_token_missing_user(db_session):
     verification_token = VerificationToken(
         token="test-token",
@@ -67,7 +80,10 @@ def test_verification_token_missing_user(db_session):
     with pytest.raises(IntegrityError, match="not-null constraint"):
         db_session.commit()
 
-
+"""
+    Ensure your service layer wraps low‑level DB errors into clean, user‑facing exceptions.
+    LAYER: Service.
+"""
 def test_db_constraint_violation_handling(db_session, authentication_service):
     authentication_service.create_user(db_session, "dup@example.com", "pass")
     with pytest.raises(AuthError, match="Email already exists"):

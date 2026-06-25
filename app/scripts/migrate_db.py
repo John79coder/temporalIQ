@@ -1,53 +1,74 @@
 # app/scripts/migrate_db.py
+
+"""
+Generates a new Alembic migration.
+
+Run this script only after changing SQLAlchemy models.
+
+Review the generated migration before applying it.
+
+Typical usage:
+
+    python -m app.scripts.migrate_db
+    python -m app.scripts.migrate_db "Initial schema"
+    python -m app.scripts.migrate_db "Add UserTwoFactor table"
+"""
+
 import logging
 import os
 import subprocess
 import sys
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
+from config import Config
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s: %(message)s",
+)
+
 logger = logging.getLogger(__name__)
 
-# Add project root to Python path
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
-sys.path.append(project_root)
-logger.info(f"Added project root to sys.path: {project_root}")
 
-from app import create_app
-from config import Config, TestingConfig
+def generate_migration(message: str = "Auto migration") -> None:
+    """Generate a new Alembic migration."""
 
+    env = os.environ.copy()
 
-def run_migration(config_class, env_name, db_url):
-    """Run Flask-Migrate commands for the specified environment."""
-    logger.info(f"Running database migration for {env_name} environment with DB URL: {db_url}")
-    app = create_app(config_class)
-    with app.app_context():
-        try:
-            env = os.environ.copy()
-            env['FLASK_APP'] = 'app'
-            env['DATABASE_URL'] = db_url
-            logger.info("Generating migration script")
-            result_migrate = subprocess.run(
-                ["flask", "db", "migrate", "-m", f"Auto migration for {env_name}"],
-                env=env, capture_output=True, text=True
-            )
-            if result_migrate.returncode != 0:
-                logger.error(f"Migration generation failed: {result_migrate.stderr}")
-                raise RuntimeError(f"Migration generation failed: {result_migrate.stderr}")
-            logger.info("Applying migration")
-            result_upgrade = subprocess.run(
-                ["flask", "db", "upgrade"],
-                env=env, capture_output=True, text=True
-            )
-            if result_upgrade.returncode != 0:
-                logger.error(f"Migration upgrade failed: {result_upgrade.stderr}")
-                raise RuntimeError(f"Migration upgrade failed: {result_upgrade.stderr}")
-            logger.info(f"Migration complete for {env_name} environment")
-        except Exception as e:
-            logger.error(f"Migration failed for {env_name}: {e}")
-            raise
+    env["FLASK_APP"] = "main"
+    env["DATABASE_URL"] = Config.DATABASE_URL
+
+    logger.info(f"Generating Alembic migration: {message}")
+
+    result = subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "flask",
+            "db",
+            "migrate",
+            "-m",
+            message,
+        ],
+        env=env,
+        text=True,
+        capture_output=True,
+    )
+
+    if result.returncode != 0:
+        logger.error(result.stderr)
+        raise RuntimeError("Migration generation failed.")
+
+    if result.stdout:
+        logger.info(result.stdout)
+
+    logger.info("Migration generated successfully.")
 
 
 if __name__ == "__main__":
-    run_migration(Config, "production", Config.DATABASE_URL)
-    run_migration(TestingConfig, "test", TestingConfig.SQLALCHEMY_DATABASE_URI)
+    message = (
+        " ".join(sys.argv[1:])
+        if len(sys.argv) > 1
+        else "Auto migration"
+    )
+
+    generate_migration(message)

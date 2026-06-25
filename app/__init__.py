@@ -2,9 +2,7 @@
 import logging
 import os
 
-import click
 from flask import Flask, g, jsonify
-from flask.cli import with_appcontext
 from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
 from flask_session import Session
@@ -113,12 +111,5 @@ def create_app(config_class=Config):
         if db_session is not None:
             db.session.remove()
         g.pop("cache", None)
-
-    @app.cli.command("init-db")
-    @with_appcontext
-    def init_db():
-        """Initialize the database (for dev/MVP environments only)."""
-        db.create_all()
-        click.echo("✅ Database initialized.")
 
     return app

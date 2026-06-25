@@ -1,62 +1,85 @@
 # app/scripts/init_db.py
+
+"""
+Creates (or recreates) the PostgreSQL database.
+
+This script deliberately DOES NOT create any tables.
+
+Schema creation is handled exclusively by Alembic migrations.
+
+Typical usage:
+
+    python app/scripts/init_db.py
+
+followed by
+
+    python app/scripts/upgrade_db.py
+"""
+
 import logging
-import os
-import sys
 
 import psycopg2
 from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.engine import make_url
 
-# Configure logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Add project root to Python path
-project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), '../..'))
-sys.path.append(project_root)
-logger.info(f"Added project root to sys.path: {project_root}")
-
-from app import create_app
-from app.extensions import db
 from config import Config
 
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(levelname)s: %(message)s",
+)
 
-def create_database_if_not_exists(db_url):
-    """Create the PostgreSQL database if it doesn't exist."""
-    db_name = db_url.split("/")[-1]
-    base_url = "/".join(db_url.split("/")[:-1]) + "/postgres"
+logger = logging.getLogger(__name__)
+
+
+def create_database(database_url: str) -> None:
+    """
+    Drops and recreates the target PostgreSQL database.
+
+    The database will exist but contain no tables.
+    """
+
+    url = make_url(database_url)
+    db_name = url.database
+    postgres_url = url.set(database="postgres").render_as_string(hide_password=False)
+
+    logger.info("Connecting to PostgreSQL server...")
+
+    connection = psycopg2.connect(postgres_url)
+    connection.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
+
     try:
-        logger.info(f"Connecting to PostgreSQL server at {base_url}")
-        conn = psycopg2.connect(base_url)
-        conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-        cursor = conn.cursor()
-        logger.info(f"Terminating open connections to database {db_name}")
-        cursor.execute(f"""
-            SELECT pg_terminate_backend(pg_stat_activity.pid)
-            FROM pg_stat_activity
-            WHERE pg_stat_activity.datname = '{db_name}' AND pid <> pg_backend_pid();
-        """)
-        logger.info(f"Dropping database {db_name} if it exists")
-        cursor.execute(f"DROP DATABASE IF EXISTS {db_name}")
-        logger.info(f"Creating database {db_name}")
-        cursor.execute(f"CREATE DATABASE {db_name}")
-        cursor.close()
-        conn.close()
-        logger.info(f"Successfully created database: {db_name}")
-    except Exception as e:
-        logger.error(f"Failed to create database: {e}")
+        with connection.cursor() as cursor:
+
+            logger.info("Closing active connections...")
+
+            cursor.execute(
+                """
+                SELECT pg_terminate_backend(pid)
+                FROM pg_stat_activity
+                WHERE datname = %s
+                  AND pid <> pg_backend_pid();
+                """,
+                (db_name,),
+            )
+
+            logger.info(f"Dropping database '{db_name}' if it exists...")
+
+            cursor.execute(f'DROP DATABASE IF EXISTS "{db_name}"')
+
+            logger.info(f"Creating database '{db_name}'...")
+
+            cursor.execute(f'CREATE DATABASE "{db_name}"')
+
+    except Exception:
+        logger.exception("Database creation failed.")
         raise
 
+    finally:
+        connection.close()
 
-app = create_app(Config)
+    logger.info("Database successfully created.")
 
-with app.app_context():
-    try:
-        logger.info("Initializing production database")
-        create_database_if_not_exists(Config.DATABASE_URL)
-        logger.info("Creating database schema")
-        db.create_all()
-        logger.info("Production database tables initialized successfully")
-    except OperationalError as e:
-        logger.error(f"Failed to initialize tables: {e}")
-        raise
+
+if __name__ == "__main__":
+    create_database(Config.DATABASE_URL)

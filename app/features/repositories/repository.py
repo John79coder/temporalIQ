@@ -20,7 +20,7 @@ class FeaturesRepository(AbstractRepository):
 
         try:
             db.add(settings)
-            db.commit()
+            db.flush()
             db.refresh(settings)
             return settings
         except SQLAlchemyError as e:

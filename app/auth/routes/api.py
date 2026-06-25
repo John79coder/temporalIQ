@@ -31,14 +31,14 @@ def signup():
     try:
         user = authentication_service.create_user(g.db, data.email, data.password)
         email_verification_service = current_app.extensions['app_context'].get_service('email_verification_service')
-        email_verification_token = email_verification_service.create_email_verification_token(g.db, user.id, data.email)
-        jwt_token = jwt.encode(
-            {"sub": str(user.id), "exp": TimeZone.utc_now() + timedelta(hours=24)},
-            current_app.config["JWT_SECRET_KEY"],
-            algorithm=current_app.config["JWT_ALGORITHM"]
-        )
-        return jsonify({"user": UserOut.model_validate(user).model_dump(), "jwt": jwt_token,
-                        "token": email_verification_token.token}), 200
+        _ = email_verification_service.create_email_verification_token(g.db, user.id, data.email)
+
+        g.db.commit()
+
+        return jsonify({
+            "message": "Account created. Please verify your email."
+        }), 200
+
     except AuthError as e:
         error_response, status_code = format_error_response(AuthError(str(e)), 401)
         return make_response(jsonify(error_response), status_code)
@@ -100,7 +100,10 @@ def verify_email():
             error_response, status_code = format_error_response(AuthError("Invalid or expired token"), 400)
             return make_response(jsonify(error_response), status_code)
         authentication_service = current_app.extensions['app_context'].get_service('authentication_service')
+
         user = authentication_service.user_repo.update_verified(g.db, vt.user_id)
+        g.db.commit()
+
         jwt_token = jwt.encode(
             {"sub": str(user.id), "exp": TimeZone.utc_now() + timedelta(hours=24)},
             current_app.config["JWT_SECRET_KEY"],
@@ -295,14 +298,15 @@ def verify_2fa():
 @bp.route("/csrf", methods=["GET"])
 @csrf_exempt
 def get_csrf_token():
-    try:
-        session["csrf_init"] = True
-        token = generate_csrf()
-        response = jsonify({"csrf_token": token})
-        response.headers.set("X-CSRFToken", token)
-        return response, 200
-    except RuntimeError:
-        error_response, status_code = format_error_response(
-            ServiceUnavailableError("Failed to generate CSRF token"), 500
-        )
-        return make_response(jsonify(error_response), status_code)
+    session["csrf_init"] = True
+
+    token = generate_csrf()
+
+    print("\n===== /auth/csrf =====")
+    print("Session SID:", getattr(session, "sid", "<no sid>"))
+    print("Session contents:", dict(session))
+    print("======================\n")
+
+    response = jsonify({"csrf_token": token})
+    response.headers.set("X-CSRFToken", token)
+    return response, 200

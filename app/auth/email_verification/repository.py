@@ -14,7 +14,11 @@ class TokenRepository(AbstractRepository):
     def create(self, db: Session, user_id: int, token: str, expires_at: datetime) -> VerificationToken:
         with db.begin(nested=True):
             vt = VerificationToken(user_id=user_id, token=token, expires_at=expires_at)
+
+
             db.add(vt)
+            db.flush()
+            db.refresh(vt)
             return vt
 
     def validate_token(self, db: Session, token: str) -> VerificationToken | None:

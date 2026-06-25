@@ -4,10 +4,7 @@ import tempfile
 
 from dotenv import load_dotenv
 
-from cryptography.fernet import Fernet
-
 load_dotenv()
-
 
 class Config:
     TESTING = False
@@ -20,7 +17,6 @@ class Config:
     JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
     JWT_EXP_HOURS = int(os.getenv("JWT_EXP_HOURS", "24"))
     SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
-    MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER", "no-reply@example.com")
     NOTION_CLIENT_ID = os.getenv("NOTION_CLIENT_ID")
     NOTION_CLIENT_SECRET = os.getenv("NOTION_CLIENT_SECRET")
     NOTION_REDIRECT_URI = os.getenv("NOTION_REDIRECT_URI")
@@ -41,6 +37,14 @@ class Config:
 
     PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
     LOG_FILE_PATH = os.path.join(PROJECT_ROOT, 'log.txt')
+
+    MAIL_SERVER = os.getenv("MAIL_SERVER")
+    MAIL_PORT = int(os.getenv("MAIL_PORT", "587"))
+    MAIL_USERNAME = os.getenv("MAIL_USERNAME")
+    MAIL_PASSWORD = os.getenv("MAIL_PASSWORD")
+    MAIL_USE_TLS = os.getenv("MAIL_USE_TLS", "True").lower() == "true"
+    MAIL_USE_SSL = os.getenv("MAIL_USE_SSL", "False").lower() == "true"
+    MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER", "no-reply@example.com")
 
 class TestingConfig(Config):
     TESTING = True

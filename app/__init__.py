@@ -21,19 +21,20 @@ from app.utils.app_context import AppContext
 from app.utils.exceptions import AuthError, format_error_response
 from app.utils.service_factory import ServiceFactory
 from config import Config
-
+import redis
 
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
+
     app.config["SESSION_TYPE"] = "filesystem" if config_class.TESTING else "redis"
-    app.config["SESSION_REDIS"] = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    app.config["SESSION_REDIS"] = redis.from_url(
+        os.getenv("REDIS_URL", "redis://localhost:6379/0")
+    )
 
     session_dir = app.config.get("SESSION_FILE_DIR")
     if session_dir:
         os.makedirs(session_dir, exist_ok=True)
-
-    Session(app)
 
     Session(app)
 

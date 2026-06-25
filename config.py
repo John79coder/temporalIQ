@@ -2,7 +2,11 @@
 import os
 import tempfile
 
+from dotenv import load_dotenv
+
 from cryptography.fernet import Fernet
+
+load_dotenv()
 
 
 class Config:
@@ -10,7 +14,7 @@ class Config:
     DATABASE_URL = os.getenv("DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/appdb")
     if os.getenv("TEST_DATABASE_URL") == DATABASE_URL:
         raise ValueError("Production and test database URLs must be distinct")
-    SECRET_KEY = os.getenv("FLASK_SECRET_KEY", Fernet.generate_key().decode())
+    SECRET_KEY = os.environ["SECRET_KEY"]
     SQLALCHEMY_DATABASE_URI = DATABASE_URL
     JWT_SECRET_KEY = os.getenv("JWT_SECRET", "replace-me-in-prod")
     JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
@@ -25,7 +29,7 @@ class Config:
     DEFAULT_BLOCK_MINUTES = int(os.getenv("DEFAULT_BLOCK_MINUTES", "30"))
     DEFAULT_MAX_BLOCKS_PER_DAY = int(os.getenv("DEFAULT_MAX_BLOCKS_PER_DAY", "16"))
     INCLUDE_WEEKENDS = bool(int(os.getenv("INCLUDE_WEEKENDS", "0")))
-    ENCRYPTION_KEY = os.getenv("ENCRYPTION_KEY", Fernet.generate_key().decode())
+    ENCRYPTION_KEY = os.environ["ENCRYPTION_KEY"]
     STRIPE_SECRET_KEY = os.getenv("STRIPE_SECRET_KEY")
     STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
     STRIPE_PRICE_ID_PREMIUM = os.getenv("STRIPE_PRICE_ID_PREMIUM")
@@ -33,7 +37,7 @@ class Config:
 
     SESSION_TYPE = "filesystem"
     SESSION_FILE_DIR = os.path.join(tempfile.gettempdir(), "flask_session")
-    SESSION_PERMANENT = False
+    SESSION_PERMANENT = True
 
     PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
     LOG_FILE_PATH = os.path.join(PROJECT_ROOT, 'log.txt')
@@ -46,9 +50,9 @@ class TestingConfig(Config):
     JWT_SECRET_KEY = "test-secret"
     JWT_ALGORITHM = "HS256"
     JWT_TOKEN_LOCATION = ["headers"]
-    SECRET_KEY = os.getenv("FLASK_SECRET_KEY", Fernet.generate_key().decode())
+    SECRET_KEY = os.environ["SECRET_KEY"]
     RATELIMIT_STORAGE_URI = "memory://"
-    ENCRYPTION_KEY = Fernet.generate_key().decode()
+    ENCRYPTION_KEY = os.environ["ENCRYPTION_KEY"]
     DEBUG = False
     PROPAGATE_EXCEPTIONS = False
     SQLALCHEMY_ENGINE_OPTIONS = {

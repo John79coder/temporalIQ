@@ -3,7 +3,7 @@ from datetime import timedelta
 
 import jwt
 import requests
-from flask import Blueprint, request, jsonify, current_app, g, make_response
+from flask import Blueprint, request, jsonify, current_app, g, make_response, session
 from flask_wtf.csrf import generate_csrf
 from pydantic import ValidationError as PydanticValidationError
 
@@ -290,4 +290,19 @@ def verify_2fa():
         return make_response(jsonify(error_response), status_code)
     except DatabaseError as e:
         error_response, status_code = format_error_response(DatabaseError(str(e)), 500)
+        return make_response(jsonify(error_response), status_code)
+
+@bp.route("/csrf", methods=["GET"])
+@csrf_exempt
+def get_csrf_token():
+    try:
+        session["csrf_init"] = True
+        token = generate_csrf()
+        response = jsonify({"csrf_token": token})
+        response.headers.set("X-CSRFToken", token)
+        return response, 200
+    except RuntimeError:
+        error_response, status_code = format_error_response(
+            ServiceUnavailableError("Failed to generate CSRF token"), 500
+        )
         return make_response(jsonify(error_response), status_code)

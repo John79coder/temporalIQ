@@ -64,7 +64,7 @@ class TwoFactorRepository(AbstractRepository):
     def is_enabled(db: Session, user_id: int) -> bool:
         """Return True if 2FA is both set up and enabled for the user."""
         try:
-            record = UserTwoFactorRepository._get(db, user_id)
+            record = TwoFactorRepository._get(db, user_id)
             return record is not None and record.enabled
         except Exception as e:
             raise wrap_external_error(e, DatabaseError, "Failed to check 2FA enabled status")

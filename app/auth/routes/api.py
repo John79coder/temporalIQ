@@ -54,9 +54,12 @@ def signup():
 @csrf_protected
 @limiter.limit(limit("5 per minute"))
 def login():
+    logging_service = current_app.extensions['app_context'].get_service('logging_service')
+
     try:
         data = UserLogin(**request.json)
     except PydanticValidationError as e:
+        logging_service.error(f"Login validation error: {str(e)}")
         error_response, status_code = format_error_response(
             DataValidationError(str(e)),
             400,
@@ -79,6 +82,8 @@ def login():
         )
 
         if not user:
+            logging_service.error("Login failed: Invalid email or password",
+                                 extra={"email": data.email})
             error_response, status_code = format_error_response(
                 AuthError("Invalid email or password"),
                 401,
@@ -86,21 +91,22 @@ def login():
             return make_response(jsonify(error_response), status_code)
 
         if not user.is_verified:
+            logging_service.error("Login failed: Account not verified",
+                                 user_id=user.id)
             error_response, status_code = format_error_response(
                 AuthError("Account not verified"),
                 403,
             )
             return make_response(jsonify(error_response), status_code)
 
-        #
-        # NEW
-        #
+        # Check 2FA status
         two_factor_status = two_factor_service.status(
             g.db,
             user.id,
         )
 
         if two_factor_status["enabled"]:
+            logging_service.info("Login requires 2FA", user_id=user.id)
             return jsonify(
                 {
                     "requires_two_factor": True,
@@ -108,9 +114,7 @@ def login():
                 }
             ), 200
 
-        #
-        # Existing JWT issuance
-        #
+        # Normal successful login (no 2FA)
         jwt_token = jwt.encode(
             {
                 "sub": str(user.id),
@@ -120,6 +124,8 @@ def login():
             algorithm=current_app.config["JWT_ALGORITHM"],
         )
 
+        logging_service.info("Login successful (no 2FA)", user_id=user.id)
+
         return jsonify(
             {
                 "user": UserOut.model_validate(user).model_dump(),
@@ -128,11 +134,20 @@ def login():
         ), 200
 
     except AuthError as e:
+        logging_service.error(f"AuthError during login: {str(e)}")
         error_response, status_code = format_error_response(e, 401)
         return make_response(jsonify(error_response), status_code)
 
     except DatabaseError as e:
+        logging_service.error(f"DatabaseError during login: {str(e)}")
         error_response, status_code = format_error_response(e, 500)
+        return make_response(jsonify(error_response), status_code)
+
+    except Exception as e:
+        logging_service.error(f"Unexpected error during login: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        error_response, status_code = format_error_response(AuthError("Login failed"), 500)
         return make_response(jsonify(error_response), status_code)
 
 @bp.route("/logout", methods=["POST"])
@@ -160,9 +175,13 @@ def logout():
 @csrf_protected
 @limiter.limit(limit("5 per minute"))
 def verify_email():
+    logging_service = current_app.extensions['app_context'].get_service('logging_service')
+
     try:
         data = TokenSchema(**request.json)
+        logging_service.info("Email verification attempt", extra={"token_prefix": data.token[:20] + "..." if data.token else None})
     except PydanticValidationError as e:
+        logging_service.error(f"Email verification validation error: {str(e)}")
         error_response, status_code = format_error_response(DataValidationError(str(e)), 400)
         return make_response(jsonify(error_response), status_code)
 
@@ -170,8 +189,10 @@ def verify_email():
     try:
         vt = email_verification_service.verify_token(g.db, data.token)
         if not vt:
+            logging_service.error("Email verification failed: Invalid or expired token", extra={"token": data.token[:20] + "..."})
             error_response, status_code = format_error_response(AuthError("Invalid or expired token"), 400)
             return make_response(jsonify(error_response), status_code)
+
         authentication_service = current_app.extensions['app_context'].get_service('authentication_service')
 
         user = authentication_service.user_repo.update_verified(g.db, vt.user_id)
@@ -182,12 +203,26 @@ def verify_email():
             current_app.config["JWT_SECRET_KEY"],
             algorithm=current_app.config["JWT_ALGORITHM"]
         )
+
+        logging_service.info("Email verification successful", user_id=user.id)
+
         return jsonify({"user": UserOut.model_validate(user).model_dump(), "jwt": jwt_token}), 200
+
     except DatabaseError as e:
+        logging_service.error(f"DatabaseError during email verification: {str(e)}")
         error_response, status_code = format_error_response(DatabaseError(str(e)), 500)
         return make_response(jsonify(error_response), status_code)
+
     except ServiceUnavailableError as e:
+        logging_service.error(f"ServiceUnavailableError during email verification: {str(e)}")
         error_response, status_code = format_error_response(ServiceUnavailableError(str(e)), 500)
+        return make_response(jsonify(error_response), status_code)
+
+    except Exception as e:
+        logging_service.error(f"Unexpected error during email verification: {str(e)}")
+        import traceback
+        traceback.print_exc()
+        error_response, status_code = format_error_response(AuthError("Email verification failed"), 500)
         return make_response(jsonify(error_response), status_code)
 
 

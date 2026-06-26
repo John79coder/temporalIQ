@@ -1,11 +1,15 @@
 # app/auth/routes/TwoFactor.py
+from datetime import timedelta
 
+import jwt
 from flask import request, jsonify, current_app, g, make_response
 
+from app.auth.models.schemas import UserOut
 from app.auth.routes.api import bp
 from app.extensions import limit, limiter
 from app.utils.endpoint_utils import verify_jwt, csrf_protected
 from app.utils.exceptions import DataValidationError, DatabaseError, AuthError, format_error_response
+from app.utils.time_zone import TimeZone
 
 
 @bp.route("/2fa/setup", methods=["GET"])
@@ -13,26 +17,36 @@ from app.utils.exceptions import DataValidationError, DatabaseError, AuthError, 
 @csrf_protected
 @limiter.limit(limit("5 per minute"))
 def setup_2fa():
-    two_factor_service = current_app.extensions["app_context"].get_service(
-        "two_factor_service"
-    )
+    logging_service = current_app.extensions['app_context'].get_service('logging_service')
+    two_factor_service = current_app.extensions["app_context"].get_service("two_factor_service")
 
     try:
-        response = two_factor_service.setup(
-            g.db,
-            g.current_user.id,
-        )
+        user_id = g.current_user.id if g.current_user else None
+        logging_service.info("Starting 2FA setup", user_id=user_id)
+
+        response = two_factor_service.setup(g.db, g.current_user.id)
 
         g.db.commit()
 
+        logging_service.info("2FA setup successful", user_id=user_id)
         return jsonify(response), 200
 
     except AuthError as e:
+        logging_service.error(f"AuthError in 2FA setup: {str(e)}", user_id=getattr(g.current_user, 'id', None))
         error_response, status_code = format_error_response(e, 400)
         return make_response(jsonify(error_response), status_code)
 
     except DatabaseError as e:
+        logging_service.error(f"DatabaseError in 2FA setup: {str(e)}", user_id=getattr(g.current_user, 'id', None))
         error_response, status_code = format_error_response(e, 500)
+        return make_response(jsonify(error_response), status_code)
+
+    except Exception as e:  # Catch unexpected errors
+        logging_service.error(f"Unexpected error in 2FA setup: {str(e)}",
+                              user_id=getattr(g.current_user, 'id', None))
+        import traceback
+        traceback.print_exc()
+        error_response, status_code = format_error_response(AuthError("Failed to setup 2FA"), 500)
         return make_response(jsonify(error_response), status_code)
 
 
@@ -41,6 +55,8 @@ def setup_2fa():
 @csrf_protected
 @limiter.limit(limit("5 per minute"))
 def verify_two_factor_setup():
+    logging_service = current_app.extensions['app_context'].get_service('logging_service')
+
     try:
         code = request.json.get("code")
 
@@ -48,6 +64,7 @@ def verify_two_factor_setup():
             raise DataValidationError("Missing code")
 
     except Exception as e:
+        logging_service.error(f"Validation error in 2FA verify: {str(e)}")
         error_response, status_code = format_error_response(
             DataValidationError(str(e)),
             400,
@@ -59,6 +76,9 @@ def verify_two_factor_setup():
     )
 
     try:
+        user_id = g.current_user.id if g.current_user else None
+        logging_service.info("Starting 2FA verification", user_id=user_id)
+
         backup_codes = two_factor_service.verify_setup(
             g.db,
             g.current_user.id,
@@ -67,6 +87,8 @@ def verify_two_factor_setup():
 
         g.db.commit()
 
+        logging_service.info("2FA verification successful", user_id=user_id)
+
         return jsonify(
             {
                 "backup_codes": backup_codes
@@ -74,11 +96,23 @@ def verify_two_factor_setup():
         ), 200
 
     except AuthError as e:
+        logging_service.error(f"AuthError in 2FA verify: {str(e)}",
+                             user_id=getattr(g.current_user, 'id', None))
         error_response, status_code = format_error_response(e, 400)
         return make_response(jsonify(error_response), status_code)
 
     except DatabaseError as e:
+        logging_service.error(f"DatabaseError in 2FA verify: {str(e)}",
+                             user_id=getattr(g.current_user, 'id', None))
         error_response, status_code = format_error_response(e, 500)
+        return make_response(jsonify(error_response), status_code)
+
+    except Exception as e:
+        logging_service.error(f"Unexpected error in 2FA verify: {str(e)}",
+                             user_id=getattr(g.current_user, 'id', None))
+        import traceback
+        traceback.print_exc()
+        error_response, status_code = format_error_response(AuthError("Failed to verify 2FA"), 500)
         return make_response(jsonify(error_response), status_code)
 
 
@@ -136,17 +170,20 @@ def disable_two_factor():
 
 
 @bp.route("/2fa/verify", methods=["POST"])
-@verify_jwt
 @csrf_protected
 @limiter.limit(limit("10 per minute"))
 def verify_two_factor_login():
+    logging_service = current_app.extensions['app_context'].get_service('logging_service')
+
     try:
         code = request.json.get("code")
+        user_id = request.json.get("user_id")   # For initial login (no JWT)
 
         if not code:
             raise DataValidationError("Missing code")
 
     except Exception as e:
+        logging_service.error(f"Validation error in 2FA login verify: {str(e)}")
         error_response, status_code = format_error_response(
             DataValidationError(str(e)),
             400,
@@ -158,24 +195,68 @@ def verify_two_factor_login():
     )
 
     try:
-        verified = two_factor_service.verify_login(
-            g.db,
-            g.current_user.id,
-            code,
-        )
+        # Two cases:
+        # 1. Initial login (no JWT yet) — use user_id from request
+        # 2. Already authenticated (with JWT) — use g.current_user
+        if user_id:
+            logging_service.info("2FA login verification (initial login)", user_id=user_id)
+            verified = two_factor_service.verify_login(
+                g.db,
+                int(user_id),
+                code,
+            )
+        else:
+            # Normal authenticated case
+            user_id = g.current_user.id if g.current_user else None
+            logging_service.info("2FA login verification", user_id=user_id)
+            verified = two_factor_service.verify_login(
+                g.db,
+                g.current_user.id,
+                code,
+            )
 
-        return jsonify(
-            {
-                "verified": verified,
-            }
-        ), 200
+        if verified:
+            # Issue JWT on successful 2FA verification during login
+            jwt_token = jwt.encode(
+                {
+                    "sub": str(user_id),
+                    "exp": TimeZone.utc_now() + timedelta(hours=24),
+                },
+                current_app.config["JWT_SECRET_KEY"],
+                algorithm=current_app.config["JWT_ALGORITHM"],
+            )
+
+            # Get user for response
+            authentication_service = current_app.extensions["app_context"].get_service("authentication_service")
+            user = authentication_service.user_repo.get_by_id(g.db, user_id)
+
+            logging_service.info("2FA login successful", user_id=user_id)
+
+            return jsonify({
+                "verified": True,
+                "user": UserOut.model_validate(user).model_dump() if user else None,
+                "jwt": jwt_token,
+            }), 200
+        else:
+            logging_service.error("2FA code invalid", user_id=user_id)
+            error_response, status_code = format_error_response(AuthError("Invalid code"), 400)
+            return make_response(jsonify(error_response), status_code)
 
     except AuthError as e:
+        logging_service.error(f"AuthError in 2FA login verify: {str(e)}", user_id=user_id)
         error_response, status_code = format_error_response(e, 400)
         return make_response(jsonify(error_response), status_code)
 
     except DatabaseError as e:
+        logging_service.error(f"DatabaseError in 2FA login verify: {str(e)}", user_id=user_id)
         error_response, status_code = format_error_response(e, 500)
+        return make_response(jsonify(error_response), status_code)
+
+    except Exception as e:
+        logging_service.error(f"Unexpected error in 2FA login verify: {str(e)}", user_id=user_id)
+        import traceback
+        traceback.print_exc()
+        error_response, status_code = format_error_response(AuthError("2FA verification failed"), 500)
         return make_response(jsonify(error_response), status_code)
 
 

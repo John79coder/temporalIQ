@@ -24,7 +24,7 @@ class TwoFactorService:
         - Verify TOTP tokens.
 
     Not responsible for:
-        - Any database queries or mutations (delegated to UserTwoFactorRepository).
+        - Any database queries or mutations (delegated to TwoFactorRepository).
         - User lookup beyond what is needed to obtain an email for the provisioning URI
           (delegated to UserRepository).
     """

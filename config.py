@@ -13,7 +13,7 @@ class Config:
         raise ValueError("Production and test database URLs must be distinct")
     SECRET_KEY = os.environ["SECRET_KEY"]
     SQLALCHEMY_DATABASE_URI = DATABASE_URL
-    JWT_SECRET_KEY = os.getenv("JWT_SECRET", "replace-me-in-prod")
+    JWT_SECRET_KEY = os.environ["JWT_SECRET_KEY"]
     JWT_ALGORITHM = os.getenv("JWT_ALGORITHM", "HS256")
     JWT_EXP_HOURS = int(os.getenv("JWT_EXP_HOURS", "24"))
     SENDGRID_API_KEY = os.getenv("SENDGRID_API_KEY")
@@ -51,7 +51,7 @@ class TestingConfig(Config):
     WTF_CSRF_ENABLED = True
     SQLALCHEMY_DATABASE_URI = os.getenv("TEST_DATABASE_URL", "postgresql://postgres:postgres@localhost:5432/testdb")
     SQLALCHEMY_TRACK_MODIFICATIONS = False
-    JWT_SECRET_KEY = "test-secret"
+    JWT_SECRET_KEY = os.environ["JWT_SECRET_KEY"]
     JWT_ALGORITHM = "HS256"
     JWT_TOKEN_LOCATION = ["headers"]
     SECRET_KEY = os.environ["SECRET_KEY"]

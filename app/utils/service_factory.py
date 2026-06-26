@@ -33,6 +33,8 @@ from app.subscriptions.repositories.repository import SubscriptionsRepository
 from app.subscriptions.services.service import SubscriptionsService
 from app.user_preferences.preferences_store.repository import PreferencesRepository
 from app.user_preferences.preferences_store.service import PreferencesService
+from app.auth.two_factor.repository import TwoFactorRepository
+from app.auth.two_factor.Service import TwoFactorService
 from app.utils.caching import get_cache_service, ICacheService
 from app.utils.encryption import Encryptor
 from app.utils.logging_service import LoggingService
@@ -214,13 +216,33 @@ class ServiceFactory:
     @staticmethod
     def _init_auth_services(caching_service: ICacheService, features_service: FeaturesService):
         """Initialize authentication-related services."""
+
         user_repo = UserRepository()
-        authentication_service = AuthenticationService(user_repo, caching_service, features_service)
+
+        two_factor_repo = TwoFactorRepository()
+
+        two_factor_service = TwoFactorService(
+            two_factor_repo,
+            user_repo,
+        )
+
+        authentication_service = AuthenticationService(
+            user_repo,
+            caching_service,
+            features_service
+        )
+
         token_repo = TokenRepository()
-        email_verification_service = EmailVerificationService(token_repo, caching_service)
+
+        email_verification_service = EmailVerificationService(
+            token_repo,
+            caching_service
+        )
+
         return {
-            'authentication_service': authentication_service,
-            'email_verification_service': email_verification_service
+            "authentication_service": authentication_service,
+            "two_factor_service": two_factor_service,
+            "email_verification_service": email_verification_service
         }
 
     @staticmethod

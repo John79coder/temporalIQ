@@ -59,7 +59,12 @@ def generate_migration(message: str = "Auto migration") -> None:
         raise RuntimeError("Migration generation failed.")
 
     if result.stdout:
-        logger.info(result.stdout)
+        print("STDOUT:")
+        print(result.stdout)
+
+    if result.stderr:
+        print("STDERR:")
+        print(result.stderr)
 
     logger.info("Migration generated successfully.")
 

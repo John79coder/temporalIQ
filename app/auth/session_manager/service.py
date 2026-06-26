@@ -191,44 +191,6 @@ class AuthenticationService:
 
         return user
 
-    def setup_2fa(self, db: Session, user_id: int):
-        user = self.user_repo.get_by_id(db, user_id)
-        if not user:
-            raise AuthError("User not found")
-
-        secret = pyotp.random_base32()
-        backup_codes = self.user_repo.generate_backup_codes()
-        self.user_repo.enable_2fa(db, user_id, secret, backup_codes)
-        db.commit()  # Explicit commit if not auto
-
-        qr_url = pyotp.TOTP(secret).provisioning_uri(name=user.email, issuer_name="YourSaaS")
-
-        qr = qrcode.QRCode()
-        qr.add_data(qr_url)
-        qr.make(fit=True)
-        img = qr.make_image(fill_color="black", back_color="white")
-
-        buffer = BytesIO()
-        img.save(buffer, format="PNG")
-
-        qr_base64 = "data:image/png;base64," + base64.b64encode(buffer.getvalue()).decode()
-
-        return {"qr_base64": qr_base64, "secret": secret, "backup_codes": backup_codes}
-
-    def verify_2fa_code(self, db: Session, user_id: int, code: str):
-        user = self.user_repo.get_by_id(db, user_id)
-        if not user or not user.two_factor_enabled:
-            raise AuthError("2FA not enabled")
-        totp = pyotp.TOTP(user.two_factor_secret)
-        if totp.verify(code):
-            return True
-        for i, hashed_code in enumerate(user.backup_codes or []):
-            if pwd_context.verify(code, hashed_code):
-                user.backup_codes.pop(i)
-                user.updated_at = TimeZone.utc_now()
-                db.commit()
-                return True
-        return False
 
     # NEW: General _send_email method (moved from EmailVerificationService for reuse)
     def _send_email(self, to_email: str, subject: str, body: str):

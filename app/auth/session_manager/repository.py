@@ -97,18 +97,3 @@ class UserRepository(AbstractRepository):
                 db.flush()
                 db.refresh(user)
             return user
-
-    @staticmethod
-    def enable_2fa(db: Session, user_id: int, secret: str, backup_codes: List[str]) -> None:
-        with db.begin(nested=True):
-            user = db.query(User).filter(User.id == user_id).first()
-            if user:
-                user.two_factor_secret = secret
-                user.two_factor_enabled = True
-                user.backup_codes = [pwd_context.hash(code) for code in backup_codes]  # Hash codes
-                user.updated_at = TimeZone.utc_now()
-                db.flush()
-
-    @staticmethod
-    def generate_backup_codes() -> List[str]:
-        return [secrets.token_urlsafe(8) for _ in range(10)]  # 10 codes, 8 bytes each

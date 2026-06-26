@@ -57,29 +57,82 @@ def login():
     try:
         data = UserLogin(**request.json)
     except PydanticValidationError as e:
-        error_response, status_code = format_error_response(DataValidationError(str(e)), 400)
+        error_response, status_code = format_error_response(
+            DataValidationError(str(e)),
+            400,
+        )
         return make_response(jsonify(error_response), status_code)
 
-    authentication_service = current_app.extensions['app_context'].get_service('authentication_service')
+    authentication_service = current_app.extensions["app_context"].get_service(
+        "authentication_service"
+    )
+
+    two_factor_service = current_app.extensions["app_context"].get_service(
+        "two_factor_service"
+    )
+
     try:
-        user = authentication_service.authenticate_user(g.db, data.email, data.password)
-        if not user:
-            error_response, status_code = format_error_response(AuthError("Invalid email or password"), 401)
-            return make_response(jsonify(error_response), status_code)
-        if not user.is_verified:
-            error_response, status_code = format_error_response(AuthError("Account not verified"), 403)
-            return make_response(jsonify(error_response), status_code)
-        jwt_token = jwt.encode(
-            {"sub": str(user.id), "exp": TimeZone.utc_now() + timedelta(hours=24)},
-            current_app.config["JWT_SECRET_KEY"],
-            algorithm=current_app.config["JWT_ALGORITHM"]
+        user = authentication_service.authenticate_user(
+            g.db,
+            data.email,
+            data.password,
         )
-        return jsonify({"user": UserOut.model_validate(user).model_dump(), "jwt": jwt_token}), 200
+
+        if not user:
+            error_response, status_code = format_error_response(
+                AuthError("Invalid email or password"),
+                401,
+            )
+            return make_response(jsonify(error_response), status_code)
+
+        if not user.is_verified:
+            error_response, status_code = format_error_response(
+                AuthError("Account not verified"),
+                403,
+            )
+            return make_response(jsonify(error_response), status_code)
+
+        #
+        # NEW
+        #
+        two_factor_status = two_factor_service.status(
+            g.db,
+            user.id,
+        )
+
+        if two_factor_status["enabled"]:
+            return jsonify(
+                {
+                    "requires_two_factor": True,
+                    "user_id": user.id,
+                }
+            ), 200
+
+        #
+        # Existing JWT issuance
+        #
+        jwt_token = jwt.encode(
+            {
+                "sub": str(user.id),
+                "exp": TimeZone.utc_now() + timedelta(hours=24),
+            },
+            current_app.config["JWT_SECRET_KEY"],
+            algorithm=current_app.config["JWT_ALGORITHM"],
+        )
+
+        return jsonify(
+            {
+                "user": UserOut.model_validate(user).model_dump(),
+                "jwt": jwt_token,
+            }
+        ), 200
+
     except AuthError as e:
-        error_response, status_code = format_error_response(AuthError(str(e)), 401)
+        error_response, status_code = format_error_response(e, 401)
         return make_response(jsonify(error_response), status_code)
+
     except DatabaseError as e:
-        error_response, status_code = format_error_response(DatabaseError(str(e)), 500)
+        error_response, status_code = format_error_response(e, 500)
         return make_response(jsonify(error_response), status_code)
 
 
@@ -237,57 +290,6 @@ def confirm_password_reset():
             algorithm=current_app.config["JWT_ALGORITHM"]
         )
         return jsonify({"user": UserOut.model_validate(user).model_dump(), "jwt": jwt_token}), 200
-    except AuthError as e:
-        error_response, status_code = format_error_response(AuthError(str(e)), 400)
-        return make_response(jsonify(error_response), status_code)
-    except DatabaseError as e:
-        error_response, status_code = format_error_response(DatabaseError(str(e)), 500)
-        return make_response(jsonify(error_response), status_code)
-
-
-@bp.route("/2fa/setup", methods=["GET"])
-@verify_jwt
-@csrf_protected
-@limiter.limit(limit("5 per minute"))
-def setup_2fa():
-    authentication_service = current_app.extensions['app_context'].get_service('authentication_service')
-    try:
-        data = authentication_service.setup_2fa(g.db, g.current_user.id)
-        return jsonify(data), 200
-    except AuthError as e:
-        error_response, status_code = format_error_response(AuthError(str(e)), 400)
-        return make_response(jsonify(error_response), status_code)
-    except DatabaseError as e:
-        error_response, status_code = format_error_response(DatabaseError(str(e)), 500)
-        return make_response(jsonify(error_response), status_code)
-    except Exception as e:
-        error_response, status_code = format_error_response(AuthError(str(e)), 500)
-        return make_response(jsonify(error_response), status_code)
-
-
-@bp.route("/2fa/verify", methods=["POST"])
-@csrf_protected
-@limiter.limit(limit("5 per minute"))
-def verify_2fa():
-    data = request.json
-    user_id = data.get("user_id")
-    code = data.get("code")
-    if not user_id or not code:
-        error_response, status_code = format_error_response(DataValidationError("Missing user_id or code"), 400)
-        return make_response(jsonify(error_response), status_code)
-
-    authentication_service = current_app.extensions['app_context'].get_service('authentication_service')
-    try:
-        if authentication_service.verify_2fa_code(g.db, user_id, code):
-            user = authentication_service.user_repo.get_by_id(g.db, user_id)
-            jwt_token = jwt.encode(
-                {"sub": str(user.id), "exp": TimeZone.utc_now() + timedelta(hours=24)},
-                current_app.config["JWT_SECRET_KEY"],
-                algorithm=current_app.config["JWT_ALGORITHM"]
-            )
-            return jsonify({"jwt": jwt_token}), 200
-        else:
-            raise AuthError("Invalid 2FA code")
     except AuthError as e:
         error_response, status_code = format_error_response(AuthError(str(e)), 400)
         return make_response(jsonify(error_response), status_code)

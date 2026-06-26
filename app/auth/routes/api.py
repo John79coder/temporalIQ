@@ -135,6 +135,26 @@ def login():
         error_response, status_code = format_error_response(e, 500)
         return make_response(jsonify(error_response), status_code)
 
+@bp.route("/logout", methods=["POST"])
+@csrf_protected
+@limiter.limit(limit("10 per minute"))
+def logout():
+    try:
+        # Optional: Add server-side cleanup if we implement token-blacklisting later
+        # For pure JWT, this is mostly a no-op on backend
+
+        # Clear any session data if using Flask sessions
+        session.clear()
+
+        return jsonify({
+            "message": "Successfully logged out"
+        }), 200
+
+    except Exception:
+        return jsonify({
+            "message": "Logged out (client-side)"
+        }), 200
+
 
 @bp.route("/verify", methods=["POST"])
 @csrf_protected

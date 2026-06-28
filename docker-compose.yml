@@ -1,0 +1,73 @@
+services:
+  postgres:
+    image: postgres:16
+
+    env_file:
+      - .env.docker
+
+    ports:
+      - "5432:5432"
+
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d appdb"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+    restart: unless-stopped
+
+
+  redis:
+    image: redis:7-alpine
+
+    ports:
+      - "6379:6379"
+
+    volumes:
+      - redis_data:/data
+
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 5
+
+    restart: unless-stopped
+
+
+  app:
+    build: .
+
+    ports:
+      - "5000:5000"
+
+    env_file:
+      - .env.docker
+
+    environment:
+      FLASK_ENV: development
+      FLASK_DEBUG: "1"
+      PYTHONUNBUFFERED: "1"
+
+    volumes:
+      - .:/app
+
+    working_dir: /app
+
+    command: python main.py
+
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+
+    restart: unless-stopped
+
+
+volumes:
+  postgres_data:
+  redis_data:

@@ -10,9 +10,9 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_wtf import CSRFProtect
 from sqlalchemy.dialects.postgresql.json import JSONB
 
-redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-
 mail = Mail()
+
+redis_url = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 
 limiter = Limiter(
     key_func=get_remote_address,
@@ -20,7 +20,6 @@ limiter = Limiter(
 )
 
 db = SQLAlchemy()
-
 db.JSONB = JSONB
 
 csrf = CSRFProtect()

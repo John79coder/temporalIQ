@@ -2,11 +2,12 @@
 import logging
 import os
 
-from flask import Flask, g, jsonify
+from flask import Flask, g, jsonify, request
 from flask_jwt_extended import JWTManager
 from flask_migrate import Migrate
 from flask_session import Session
 
+from app.auth.routes import TwoFactor
 from app.auth.routes.api import bp as auth_bp
 from app.extensions import csrf, mail, limiter, db, cache
 from app.features.routes.api import bp as features_bp
@@ -47,8 +48,9 @@ def create_app(config_class=Config):
     stream_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
 
     logging.basicConfig(
-        level=logging.DEBUG if config_class.TESTING else logging.ERROR,
-        handlers=[file_handler, stream_handler]
+        level=logging.DEBUG,
+        handlers=[file_handler, stream_handler],
+        force=True,
     )
 
     # Log to confirm initialization
@@ -111,5 +113,13 @@ def create_app(config_class=Config):
         if db_session is not None:
             db.session.remove()
         g.pop("cache", None)
+
+    @app.before_request
+    def log_request():
+        app.logger.info(
+            ">>> %s %s",
+            request.method,
+            request.path
+        )
 
     return app

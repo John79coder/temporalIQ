@@ -30,14 +30,12 @@ class Config:
     STRIPE_WEBHOOK_SECRET = os.getenv("STRIPE_WEBHOOK_SECRET")
     STRIPE_PRICE_ID_PREMIUM = os.getenv("STRIPE_PRICE_ID_PREMIUM")
     MODEL_DIR = os.getenv("MODEL_DIR", "ai_models_cache")
-
+    REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     SESSION_TYPE = "filesystem"
     SESSION_FILE_DIR = os.path.join(tempfile.gettempdir(), "flask_session")
     SESSION_PERMANENT = True
-
     PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
     LOG_FILE_PATH = os.path.join(PROJECT_ROOT, 'log.txt')
-
     MAIL_SERVER = os.getenv("MAIL_SERVER")
     MAIL_PORT = int(os.getenv("MAIL_PORT", "587"))
     MAIL_USERNAME = os.getenv("MAIL_USERNAME")
@@ -55,6 +53,7 @@ class TestingConfig(Config):
     JWT_ALGORITHM = "HS256"
     JWT_TOKEN_LOCATION = ["headers"]
     SECRET_KEY = os.environ["SECRET_KEY"]
+    REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
     RATELIMIT_STORAGE_URI = "memory://"
     ENCRYPTION_KEY = os.environ["ENCRYPTION_KEY"]
     DEBUG = False

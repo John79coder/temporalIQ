@@ -19,6 +19,7 @@ confection==0.1.5
 ConfigArgParse==1.7.1
 cryptography==45.0.5
 cymem==2.0.11
+debugpy
 Deprecated==1.2.18
 distro==1.9.0
 dnspython==2.7.0
@@ -74,7 +75,6 @@ packaging==25.0
 pandas==2.3.1
 passlib==1.7.4
 pillow==11.3.0
-pip==25.2
 platformdirs==4.3.8
 pluggy==1.6.0
 preshed==3.0.10
@@ -87,13 +87,14 @@ pydantic==2.11.7
 pydantic_core==2.33.2
 Pygments==2.19.2
 PyJWT==2.13.0
+pyotp
 pytest==8.4.1
 python-dateutil==2.9.0.post0
 python-engineio==4.12.2
 python-jose==3.5.0
 python-socketio==5.13.0
 pytz==2022.7.1
-pywin32==311
+pywin32==311; sys_platform == "win32"
 PyYAML==6.0.2
 pyzmq==27.0.0
 qrcode[pil]

@@ -14,6 +14,7 @@ from app.icloud.repositories.repository import ICloudRepository
 from app.icloud.services.client_manager import CalDAVClientManager
 from app.icloud.services.event_service import CalDAVEventService
 from app.icloud.services.time_block_service import TimeBlockService
+from app.notion.auth.oauth_state_service import OAuthStateService
 from app.notion.auth.service import NotionAuthService
 from app.notion.mapping_storage.feedback import FeedbackService, FeedbackRepository
 from app.notion.mapping_storage.repository import MappingRepository
@@ -176,8 +177,7 @@ class ServiceFactory:
                 caching_service,
                 features_service,
                 user_services['preferences_service'],
-                detector_registry,
-                logging_service
+                detector_registry
             )
             logger.info("Page extraction engine initialized")
         except Exception as e:
@@ -268,11 +268,14 @@ class ServiceFactory:
         mapping_service = MappingService(mapping_repo)
         feedback_repo = FeedbackRepository()
         feedback_service = FeedbackService(feedback_repo)
+        oauth_state_service = OAuthStateService(caching_service)
+
         return {
             'notion_auth_service': notion_auth_service,
             'mapping_service': mapping_service,
             'feedback_service': feedback_service,
-            'encryptor': encryptor
+            'encryptor': encryptor,
+            'oauth_state_service': oauth_state_service
         }
 
     @staticmethod

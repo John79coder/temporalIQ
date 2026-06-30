@@ -39,6 +39,9 @@ class DatabaseError(AppError):
     """Raised for database-related errors."""
     pass
 
+class InternalError(AppError):
+    """Raised for unexpected/uncategorized internal errors (generic catch-all 500s)."""
+    pass
 
 def format_error_response(error: Exception, status_code: int) -> Tuple[dict, int]:
     """

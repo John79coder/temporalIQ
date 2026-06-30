@@ -1,6 +1,8 @@
 # app/__init__.py
 import logging
 import os
+import uuid
+import json
 
 from flask import Flask, g, jsonify, request
 from flask_jwt_extended import JWTManager
@@ -22,6 +24,27 @@ from app.utils.service_factory import ServiceFactory
 from config import Config
 import redis
 
+
+class JSONFormatter(logging.Formatter):
+    def format(self, record):
+        log_entry = {
+            "timestamp": self.formatTime(record, self.datefmt),
+            "level": record.levelname,
+        }
+
+        try:
+            structured = json.loads(record.getMessage())
+        except Exception:
+            structured = None
+
+        if isinstance(structured, dict):
+            log_entry.update(structured)
+        else:
+            log_entry["message"] = record.getMessage()
+
+        return json.dumps(log_entry)
+
+
 def create_app(config_class=Config):
     app = Flask(__name__)
     app.config.from_object(config_class)
@@ -37,15 +60,17 @@ def create_app(config_class=Config):
 
     Session(app)
 
-    # Configure logging
-    log_file = os.path.join(os.path.dirname(__file__), 'app.log')
+    # Configure logging: pure JSON logs
+    log_file = os.path.join(os.path.dirname(__file__), "app.log")
+    json_formatter = JSONFormatter()
+
     file_handler = logging.FileHandler(log_file)
     file_handler.setLevel(logging.DEBUG)
-    file_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    file_handler.setFormatter(json_formatter)
 
     stream_handler = logging.StreamHandler()
     stream_handler.setLevel(logging.DEBUG)
-    stream_handler.setFormatter(logging.Formatter('%(asctime)s - %(levelname)s - %(message)s'))
+    stream_handler.setFormatter(json_formatter)
 
     logging.basicConfig(
         level=logging.DEBUG,
@@ -53,11 +78,10 @@ def create_app(config_class=Config):
         force=True,
     )
 
-    # Log to confirm initialization
-    logging.getLogger().debug(f"Logging initialized. Writing to {log_file}")
+    logging.getLogger().debug(json.dumps({"event": "app.logging_initialized", "log_file": log_file}))
 
     db_uri = app.config.get("SQLALCHEMY_DATABASE_URI")
-    logging.info(f"Initializing app with database URL: {db_uri}")
+    logging.info(json.dumps({"event": "app.init_db", "db_uri": db_uri}))
     if os.getenv("FLASK_ENV") == "test" and "postgresql" not in db_uri:
         raise ValueError("Non-PostgreSQL database URL detected in test environment")
 
@@ -71,14 +95,13 @@ def create_app(config_class=Config):
     Migrate(app, db)
 
     # Initialize services within the app context
-    app.extensions['app_context'] = AppContext()
+    app.extensions["app_context"] = AppContext()
     with app.app_context():
         services = ServiceFactory.initialize_services(cache)
         for name, service in services.items():
-            app.extensions['app_context'].set_service(name, service)
+            app.extensions["app_context"].set_service(name, service)
 
-        # Register detectors
-        detector_registry = services['mapping_engine'].detector_aggregator.registry
+        detector_registry = services["mapping_engine"].detector_aggregator.registry
         detector_registry.initialize_default_detectors()
 
     # Register blueprints
@@ -97,7 +120,7 @@ def create_app(config_class=Config):
 
     @app.errorhandler(AuthError)
     def handle_auth_error(error):
-        logging.debug(f"Handling AuthError: {str(error)}")
+        logging.debug(json.dumps({"event": "app.handle_auth_error", "error": str(error)}))
         error_response, status_code = format_error_response(error, 401)
         from flask.helpers import make_response
         return make_response(jsonify(error_response), status_code)
@@ -106,6 +129,17 @@ def create_app(config_class=Config):
     def setup_request():
         g.db = db.session
         g.cache = {}
+
+    @app.before_request
+    def attach_correlation_id():
+        incoming = request.headers.get("X-Correlation-ID")
+        g.correlation_id = incoming or str(uuid.uuid4())
+
+    @app.after_request
+    def add_correlation_id_header(response):
+        if hasattr(g, "correlation_id"):
+            response.headers["X-Correlation-ID"] = g.correlation_id
+        return response
 
     @app.teardown_appcontext
     def shutdown_session(exception=None):
@@ -117,9 +151,14 @@ def create_app(config_class=Config):
     @app.before_request
     def log_request():
         app.logger.info(
-            ">>> %s %s",
-            request.method,
-            request.path
+            json.dumps(
+                {
+                    "event": "http.request",
+                    "method": request.method,
+                    "path": request.path,
+                    "correlation_id": getattr(g, "correlation_id", None),
+                }
+            )
         )
 
     return app

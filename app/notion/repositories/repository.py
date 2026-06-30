@@ -1,6 +1,7 @@
 # app/notion/repositories/repository.py
 from typing import List
 
+from flask import current_app
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
@@ -13,8 +14,24 @@ from app.utils.time_zone import TimeZone
 class NotionAuthRepository(AbstractRepository):
     @staticmethod
     def save_connection(db: Session, connection: NotionConnection) -> None:
+
+        current_app.logger.info(
+            "Saving Notion connection for user_id=%s",
+            connection.user_id,
+        )
+
         with db.begin(nested=True):
-            existing = db.query(NotionConnection).filter_by(user_id=connection.user_id).first()
+            existing = (
+                db.query(NotionConnection)
+                .filter_by(user_id=connection.user_id)
+                .first()
+            )
+
+            current_app.logger.info(
+                "Existing connection found: %s",
+                existing is not None,
+            )
+
             if existing:
                 existing.access_token = connection.access_token
                 existing.refresh_token = connection.refresh_token
@@ -23,6 +40,14 @@ class NotionAuthRepository(AbstractRepository):
                 existing.updated_at = TimeZone.utc_now()
             else:
                 db.add(connection)
+
+            db.flush()
+
+            current_app.logger.info(
+                "After flush: id=%s created_at=%s",
+                connection.id,
+                connection.created_at,
+            )
 
     @staticmethod
     def get_connection(db: Session, user_id: int) -> NotionConnection | None:

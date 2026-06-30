@@ -14,7 +14,7 @@ class NotionConnection(db.Model, TimestampMixin):
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False, unique=True)
     access_token = db.Column(db.String, nullable=False)
     refresh_token = db.Column(db.String, nullable=True)
-    expires_at = db.Column(db.DateTime(timezone=True), nullable=False)
+    expires_at = db.Column(db.DateTime(timezone=True), nullable=True)
     workspace_id = db.Column(db.String, nullable=False)
     __table_args__ = (
         db.Index('idx_notion_user_id', 'user_id'),
@@ -32,6 +32,17 @@ class NotionConnection(db.Model, TimestampMixin):
             "workspace_id": self.workspace_id
         }
 
+    def to_dict(self):
+        return {
+            "id": self.id,
+            "user_id": self.user_id,
+            "access_token": self.access_token,
+            "refresh_token": self.refresh_token,
+            "expires_at": TimeZone.serialize_datetime(self.expires_at),
+            "created_at": TimeZone.serialize_datetime(self.created_at),
+            "updated_at": TimeZone.serialize_datetime(self.updated_at) if self.updated_at else None,
+            "workspace_id": self.workspace_id
+        }
 
 class FieldMapping(db.Model, TimestampMixin):
     __tablename__ = "field_mappings"

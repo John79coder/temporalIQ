@@ -94,87 +94,96 @@ requirements.txt
 - Python 3.11+
 - PostgreSQL 15+
 - Redis
-- Node.js (optional, for frontend)
+- Docker
 
-### Installation
+# 🚀 Getting Started
+
+## Prerequisites
+
+Install the following before getting started:
+
+- Git
+- Python 3.11+
+- Docker Desktop
+- Node.js (optional, for the frontend)
+
+## Installation
+
+Clone the repository and install the Python dependencies:
 
 ```bash
-# Clone the repository
 git clone https://github.com/John79coder/temporalIQ.git
 cd temporalIQ
 
-# Create virtual environment
-python -m venv venv
-source venv/bin/activate
+python -m venv .venv
 
-# Install dependencies
+# Windows
+.venv\Scripts\activate
+
+# Linux/macOS
+source .venv/bin/activate
+
 pip install -r requirements.txt
 
-# Download AI models (sentence-transformers, etc.)
+# Download AI models
 python download_models.py
 ```
 
-### Environment Variables
+## Environment Variables
 
-Create a `.env` file (or set environment variables):
+Create a `.env` file containing the required application secrets and API keys.
+Docker-specific configuration is supplied separately through `.env.docker`.
 
-```env
-# Flask
-FLASK_SECRET_KEY=your-super-secret-key
-ENCRYPTION_KEY=your-fernet-key
+## Build Docker Images
 
-# Database
-DATABASE_URL=postgresql://user:password@localhost:5432/temporaliq
-
-# Redis
-REDIS_URL=redis://localhost:6379/0
-
-# JWT
-JWT_SECRET=your-jwt-secret
-JWT_EXP_HOURS=24
-
-# Notion OAuth
-NOTION_CLIENT_ID=your_notion_client_id
-NOTION_CLIENT_SECRET=your_notion_client_secret
-NOTION_REDIRECT_URI=http://localhost:5000/notion/callback
-
-# iCloud / Apple
-APPLE_CLIENT_ID=your_apple_client_id
-
-# Email (SendGrid)
-SENDGRID_API_KEY=your_sendgrid_key
-MAIL_DEFAULT_SENDER=no-reply@temporaliq.com
-
-# Stripe (optional)
-STRIPE_SECRET_KEY=sk_test_...
-STRIPE_WEBHOOK_SECRET=whsec_...
-
-# AI Models
-MODEL_DIR=ai_models_cache
-```
-
-### Database Setup
+Build the Docker images:
 
 ```bash
-# Initialize migrations (first time)
-flask db init
-
-# Create and apply migrations
-flask db migrate -m "Initial migration"
-flask db upgrade
+python docker-builder.py build
 ```
 
-### Run the Development Server
+This only needs to be repeated when Dockerfiles or container dependencies change.
+
+## Start Docker Services
+
+Start all backend services:
 
 ```bash
-python main.py
-# or
-flask run
+docker compose up -d
 ```
 
-The API will be available at `http://localhost:5000`.
+This starts the Flask backend, PostgreSQL, Redis, and any other required services.
 
-### Run Tests
+## Apply Database Migrations
+
+Create or update the database schema:
+
+```bash
+python docker-builder.py migrate
+```
+
+Run this whenever new database migrations are added.
+
+## Start the Frontend
+
+Start the TemporalIQ frontend using its development server (see the frontend repository).
+Once the frontend is running, it will connect to the backend running inside Docker.
+
+## Reset the Development Environment
+
+To completely rebuild the development environment, including a fresh PostgreSQL database:
+
+```bash
+docker compose down --rmi local -v
+python docker-builder.py build
+docker compose up -d
+python docker-builder.py migrate
+```
+
+> **Warning**
+> The above command removes all Docker containers, locally built images, and the PostgreSQL data volume. All development data will be permanently deleted.
+
+## Run Tests
 
 ```bash
 pytest

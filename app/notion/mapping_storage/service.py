@@ -1,5 +1,4 @@
 # app/notion/mapping_storage/service.py
-import logging
 from typing import List
 
 from sqlalchemy.orm import Session
@@ -46,7 +45,7 @@ class MappingService:
                     status=c.status,
                     tags=c.tags,
                     alternatives=c.alternatives,
-                    page_id=c.page_id if hasattr(c, 'page_id') else None,  # Add for page
+                    page_id=c.page_id if hasattr(c, 'page_id') else None,
                     source_block_ids=c.source_block_ids if hasattr(c, 'source_block_ids') else None,
                     verified=c.verified if hasattr(c, 'verified') else False
                 )
@@ -54,5 +53,4 @@ class MappingService:
             self.task_candidate_repo.save_candidates(db, db_candidates)
             return db_candidates
         except Exception as e:
-            logging.error(f"Failed to save task candidates: {str(e)}")
             raise wrap_external_error(e, DatabaseError, "Failed to save task candidates")

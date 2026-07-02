@@ -26,19 +26,7 @@ class NotionConnection(db.Model, TimestampMixin):
             "user_id": self.user_id,
             "access_token": self.access_token,
             "refresh_token": self.refresh_token,
-            "expires_at": TimeZone.serialize_datetime(self.expires_at),
-            "created_at": TimeZone.serialize_datetime(self.created_at),
-            "updated_at": TimeZone.serialize_datetime(self.updated_at) if self.updated_at else None,
-            "workspace_id": self.workspace_id
-        }
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "user_id": self.user_id,
-            "access_token": self.access_token,
-            "refresh_token": self.refresh_token,
-            "expires_at": TimeZone.serialize_datetime(self.expires_at),
+            "expires_at": TimeZone.serialize_datetime(self.expires_at) if self.expires_at else None,
             "created_at": TimeZone.serialize_datetime(self.created_at),
             "updated_at": TimeZone.serialize_datetime(self.updated_at) if self.updated_at else None,
             "workspace_id": self.workspace_id

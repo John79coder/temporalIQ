@@ -63,6 +63,7 @@ class UserOut(BaseOutModel):
     id: int
     email: EmailStr
     is_verified: bool
+    two_factor_enabled: bool = False
     created_at: datetime
     updated_at: Optional[datetime] = None
     time_zone: Optional[str] = None

@@ -25,24 +25,69 @@ from config import Config
 import redis
 
 
+import json
+import logging
+import traceback
+
+
 class JSONFormatter(logging.Formatter):
+    """
+    Formats LogRecords as structured JSON.
+
+    Supports:
+    - Standard log messages
+    - Structured fields via `extra={...}`
+    - Legacy JSON string messages (for backwards compatibility)
+    - Exception tracebacks
+    """
+
+    # Built-in LogRecord attributes that should not become custom fields.
+    RESERVED_ATTRS = {
+        "name", "msg", "args", "levelname", "levelno", "pathname",
+        "filename", "module", "exc_info", "exc_text", "stack_info",
+        "lineno", "funcName", "created", "msecs", "relativeCreated",
+        "thread", "threadName", "processName", "process", "message",
+    }
+
     def format(self, record):
         log_entry = {
             "timestamp": self.formatTime(record, self.datefmt),
             "level": record.levelname,
+            "logger": record.name,
+            "module": record.module,
+            "function": record.funcName,
+            "line": record.lineno,
         }
 
+        message = record.getMessage()
+
+        # Backwards compatibility:
+        # If someone logged a JSON string, merge it into the output.
         try:
-            structured = json.loads(record.getMessage())
+            structured = json.loads(message)
+            if isinstance(structured, dict):
+                log_entry.update(structured)
+            else:
+                log_entry["message"] = message
         except Exception:
-            structured = None
+            log_entry["message"] = message
 
-        if isinstance(structured, dict):
-            log_entry.update(structured)
-        else:
-            log_entry["message"] = record.getMessage()
+        # Merge custom fields supplied via logger(..., extra={...})
+        for key, value in record.__dict__.items():
+            if key in self.RESERVED_ATTRS:
+                continue
 
-        return json.dumps(log_entry)
+            try:
+                json.dumps(value)
+                log_entry[key] = value
+            except TypeError:
+                log_entry[key] = str(value)
+
+        # Include traceback for logger.exception(...)
+        if record.exc_info:
+            log_entry["exception"] = self.formatException(record.exc_info)
+
+        return json.dumps(log_entry, ensure_ascii=False)
 
 
 def create_app(config_class=Config):

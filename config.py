@@ -44,6 +44,20 @@ class Config:
     MAIL_USE_SSL = os.getenv("MAIL_USE_SSL", "False").lower() == "true"
     MAIL_DEFAULT_SENDER = os.getenv("MAIL_DEFAULT_SENDER", "no-reply@example.com")
 
+    JWT_EXP_HOURS = int(os.getenv("JWT_EXP_HOURS", "24"))
+    JWT_REFRESH_EXP_DAYS = int(os.getenv("JWT_REFRESH_EXP_DAYS", "30"))
+
+    JWT_REFRESH_SECRET_KEY = os.getenv("JWT_REFRESH_SECRET_KEY", os.environ["JWT_SECRET_KEY"])
+
+    AUTH_COOKIE_NAME = "auth_token"
+    REFRESH_COOKIE_NAME = "refresh_token"
+    CSRF_COOKIE_NAME = "csrf_token"
+    AUTH_COOKIE_SAMESITE = os.getenv("AUTH_COOKIE_SAMESITE", "Lax")
+    AUTH_COOKIE_DOMAIN = os.getenv("AUTH_COOKIE_DOMAIN") or None
+    # Default True (prod). Override to False in dev/.env if you're testing over
+    # plain http — browsers silently drop Secure cookies on non-https origins.
+    AUTH_COOKIE_SECURE = os.getenv("AUTH_COOKIE_SECURE", "True").lower() == "true"
+
 class TestingConfig(Config):
     TESTING = True
     WTF_CSRF_ENABLED = True
@@ -67,3 +81,6 @@ class TestingConfig(Config):
     STRIPE_PRICE_ID_PREMIUM = "price_test_..."
     MODEL_DIR = os.getenv("MODEL_DIR", "ai_models_cache_for_testing")
     SESSION_TYPE = "filesystem"  # Add this line
+
+    AUTH_COOKIE_SECURE = False  # test client runs over plain http
+    JWT_REFRESH_SECRET_KEY = os.environ["JWT_SECRET_KEY"]

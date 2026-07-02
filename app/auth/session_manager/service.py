@@ -1,16 +1,12 @@
 # app/auth/session_manager/service.py
-import base64
 import logging
 import pickle
 import secrets
 import smtplib
 from datetime import timedelta
-from io import BytesIO
 from typing import Optional
 
 import jwt
-import pyotp
-import qrcode
 import requests
 from flask import current_app
 from flask_mail import Message
@@ -222,3 +218,60 @@ class AuthenticationService:
         except Exception as e:
             logging.error(f"Unexpected error sending email to {to_email}: {str(e)}")
             raise wrap_external_error(e, ServiceUnavailableError, "Email sending failed")
+
+
+# --- Token issuance / verification (cookie-based auth) ---
+
+    @staticmethod
+    def issue_access_token(user_id: int) -> str:
+        return jwt.encode(
+            {
+                "sub": str(user_id),
+                "type": "access",
+                "exp": TimeZone.utc_now() + timedelta(hours=current_app.config["JWT_EXP_HOURS"]),
+            },
+            current_app.config["JWT_SECRET_KEY"],
+            algorithm=current_app.config["JWT_ALGORITHM"],
+        )
+
+    @staticmethod
+    def issue_refresh_token(user_id: int) -> str:
+        return jwt.encode(
+            {
+                "sub": str(user_id),
+                "type": "refresh",
+                "exp": TimeZone.utc_now() + timedelta(days=current_app.config["JWT_REFRESH_EXP_DAYS"]),
+            },
+            current_app.config["JWT_REFRESH_SECRET_KEY"],
+            algorithm=current_app.config["JWT_ALGORITHM"],
+        )
+
+    def issue_token_pair(self, user_id: int) -> dict:
+        return {
+            "access_token": self.issue_access_token(user_id),
+            "refresh_token": self.issue_refresh_token(user_id),
+        }
+
+    def verify_refresh_token(self, db: Session, token: str) -> User:
+        try:
+            payload = jwt.decode(
+                token,
+                current_app.config["JWT_REFRESH_SECRET_KEY"],
+                algorithms=[current_app.config["JWT_ALGORITHM"]],
+            )
+        except jwt.ExpiredSignatureError as e:
+            raise wrap_external_error(e, AuthError, "Refresh token expired")
+        except jwt.InvalidTokenError as e:
+            raise wrap_external_error(e, AuthError, "Invalid refresh token")
+
+        if payload.get("type") != "refresh":
+            raise AuthError("Invalid token type for refresh")
+
+        sub = payload.get("sub")
+        if not sub:
+            raise AuthError("Malformed refresh token")
+
+        user = self.user_repo.get_by_id(db, int(sub))
+        if not user:
+            raise AuthError("User not found")
+        return user

@@ -14,6 +14,35 @@ from app.utils.exceptions import (
     wrap_external_error, format_error_response
 )
 
+def set_auth_cookies(response, access_token: str, refresh_token: str | None = None):
+    """Set the HttpOnly access/refresh cookies. This is the sole auth transport —
+    tokens are never included in the JSON response body."""
+    cfg = current_app.config
+    response.set_cookie(
+        cfg["AUTH_COOKIE_NAME"], access_token,
+        httponly=True, secure=cfg["AUTH_COOKIE_SECURE"], samesite=cfg["AUTH_COOKIE_SAMESITE"],
+        domain=cfg.get("AUTH_COOKIE_DOMAIN"), max_age=cfg["JWT_EXP_HOURS"] * 3600, path="/",
+    )
+    if refresh_token:
+        response.set_cookie(
+            cfg["REFRESH_COOKIE_NAME"], refresh_token,
+            httponly=True, secure=cfg["AUTH_COOKIE_SECURE"], samesite=cfg["AUTH_COOKIE_SAMESITE"],
+            domain=cfg.get("AUTH_COOKIE_DOMAIN"), max_age=cfg["JWT_REFRESH_EXP_DAYS"] * 86400,
+            path="/auth",  # scoped — only sent back on refresh/logout, not on every request
+        )
+    return response
+
+
+def clear_auth_cookies(response):
+    cfg = current_app.config
+    response.set_cookie(cfg["AUTH_COOKIE_NAME"], "", expires=0, max_age=0, path="/",
+                         secure=cfg["AUTH_COOKIE_SECURE"], samesite=cfg["AUTH_COOKIE_SAMESITE"],
+                         domain=cfg.get("AUTH_COOKIE_DOMAIN"), httponly=True)
+    response.set_cookie(cfg["REFRESH_COOKIE_NAME"], "", expires=0, max_age=0, path="/auth",
+                         secure=cfg["AUTH_COOKIE_SECURE"], samesite=cfg["AUTH_COOKIE_SAMESITE"],
+                         domain=cfg.get("AUTH_COOKIE_DOMAIN"), httponly=True)
+    return response
+
 
 def csrf_protected(f):
     @wraps(f)
@@ -45,23 +74,23 @@ def verify_apple_jwt_token(token: str):
 def verify_jwt(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        token = request.headers.get("Authorization")
+        token = request.cookies.get(current_app.config.get("AUTH_COOKIE_NAME", "auth_token"))
         if not token:
-            logging.error("Missing Authorization header")
+            logging.error("Missing auth cookie")
             raise AuthError("Missing token")
-        if token.lower().startswith("bearer "):
-            token = token[len("Bearer "):].strip()
-        else:
-            logging.error("Invalid Authorization header format")
-            raise AuthError("Invalid Authorization header format")
 
         try:
-            # Decode JWT using PyJWT
             payload = jwt.decode(
                 token,
                 current_app.config["JWT_SECRET_KEY"],
                 algorithms=[current_app.config.get("JWT_ALGORITHM", "HS256")]
             )
+            # Backward-compat: tokens minted before this change have no "type" claim.
+            # Reject only if a type is present and it's wrong (i.e. a refresh token
+            # used where an access token belongs) — don't reject absence of the claim.
+            if payload.get("type") not in (None, "access"):
+                logging.error("Wrong token type presented as access token")
+                raise AuthError("Invalid token type")
             sub = payload.get("sub")
             if not sub:
                 logging.error("Missing 'sub' claim in JWT")

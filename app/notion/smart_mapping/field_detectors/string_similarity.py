@@ -21,60 +21,90 @@ class StringSimilarityMatcher(FieldDetector):
 
     def __init__(self, features_service: FeaturesService):
         self.features_service = features_service
-        self.model = None
+        self.model: SentenceTransformer | None = None
 
-    def get_model(self):
+    def get_model(self) -> SentenceTransformer:
         if self.model is None:
             try:
                 model_dir = current_app.config.get("MODEL_DIR", ".")
                 model_path = os.path.join(model_dir, "all-MiniLM-L6-v2")
-                transformer = Transformer(model_name_or_path=model_path, model_args={"attn_implementation": "eager"})
-                pooling = Pooling(transformer.get_word_embedding_dimension(), pooling_mode='mean')
+                transformer = Transformer(
+                    model_name_or_path=model_path,
+                    model_args={"attn_implementation": "eager"},
+                )
+                pooling = Pooling(
+                    transformer.get_word_embedding_dimension(),
+                    pooling_mode="mean",
+                )
                 self.model = SentenceTransformer(modules=[transformer, pooling])
             except Exception as e:
-                raise wrap_external_error(e, ServiceUnavailableError, "Failed to load embedding model")
+                raise wrap_external_error(
+                    e,
+                    ServiceUnavailableError,
+                    "Failed to load embedding model",
+                )
         return self.model
 
-    def detect(self, fields: list[dict], rows: List[dict] = None, db: Session = None, user_id: int = None) -> list[
-        FieldMatch]:
+    def detect(
+        self,
+        fields: list[dict],
+        rows: List[dict] | None = None,
+        db: Session | None = None,
+        user_id: int | None = None,
+    ) -> list[FieldMatch]:
         user_ai_settings = self.features_service.get_settings(db, user_id)
         use_embedding_similarity = user_ai_settings.use_embedding_similarity
 
         if not use_embedding_similarity:
             return self._fallback_detect(fields)
 
-        matches = []
-        field_names = [field["name"].lower() for field in fields]
-        concept_names = self.target_fields
+        try:
+            matches: list[FieldMatch] = []
+            field_names = [field["name"].lower() for field in fields]
+            concept_names = self.target_fields
 
-        # Embed all at once for efficiency
-        field_embeds = self.get_model().encode(field_names)
-        concept_embeds = self.get_model().encode(concept_names)
+            model = self.get_model()
+            field_embeds = model.encode(field_names)
+            concept_embeds = model.encode(concept_names)
 
-        for i, field in enumerate(fields):
-            name_emb = field_embeds[i]
-            for j, concept in enumerate(concept_names):
-                sim = F.cosine_similarity(torch.tensor(np.array([name_emb])),
-                                          torch.tensor(np.array([concept_embeds[j]]))).item()
-                if sim > 0.5:
-                    matches.append(FieldMatch(
-                        notion_field=field["name"],
-                        matched_concept=concept,
-                        confidence=sim,
-                        rationale="Embedding similarity"
-                    ))
-        return matches
+            for i, field in enumerate(fields):
+                name_emb = field_embeds[i]
+                for j, concept in enumerate(concept_names):
+                    sim = F.cosine_similarity(
+                        torch.tensor(np.array([name_emb])),
+                        torch.tensor(np.array([concept_embeds[j]])),
+                    ).item()
+                    if sim > 0.5:
+                        matches.append(
+                            FieldMatch(
+                                notion_field=field["name"],
+                                matched_concept=concept,
+                                confidence=sim,
+                                rationale="Embedding similarity",
+                            )
+                        )
+            return matches
+
+        except Exception as e:
+            # Any embedding/model-related failure is treated as a service issue
+            raise wrap_external_error(
+                e,
+                ServiceUnavailableError,
+                "Failed to compute embedding similarity",
+            )
 
     def _fallback_detect(self, fields: list[dict]) -> list[FieldMatch]:
-        matches = []
+        matches: list[FieldMatch] = []
         for field in fields:
             name_lower = field["name"].lower()
             for concept in self.target_fields:
                 if concept in name_lower:
-                    matches.append(FieldMatch(
-                        notion_field=field["name"],
-                        matched_concept=concept,
-                        confidence=0.7,
-                        rationale="String partial match"
-                    ))
+                    matches.append(
+                        FieldMatch(
+                            notion_field=field["name"],
+                            matched_concept=concept,
+                            confidence=0.7,
+                            rationale="String partial match",
+                        )
+                    )
         return matches

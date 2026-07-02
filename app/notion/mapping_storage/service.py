@@ -1,4 +1,5 @@
 # app/notion/mapping_storage/service.py
+
 from typing import List
 
 from sqlalchemy.orm import Session
@@ -22,7 +23,7 @@ class MappingService:
             notion_db_id=mapping_data.notion_db_id,
             title_field=mapping_data.title_field,
             due_date_field=mapping_data.due_date_field,
-            duration_field=mapping_data.duration_field
+            duration_field=mapping_data.duration_field,
         )
         return self.repo.save(db, mapping)
 
@@ -30,6 +31,7 @@ class MappingService:
         return self.repo.get_mapping(db, user_id, notion_db_id)
 
     def save_task_candidates(self, db: Session, candidate_data: List[TaskCandidateData]) -> list[TaskCandidate]:
+
         try:
             db_candidates = []
             for c in candidate_data:
@@ -45,12 +47,14 @@ class MappingService:
                     status=c.status,
                     tags=c.tags,
                     alternatives=c.alternatives,
-                    page_id=c.page_id if hasattr(c, 'page_id') else None,
-                    source_block_ids=c.source_block_ids if hasattr(c, 'source_block_ids') else None,
-                    verified=c.verified if hasattr(c, 'verified') else False
+                    page_id=getattr(c, "page_id", None),
+                    source_block_ids=getattr(c, "source_block_ids", None),
+                    verified=getattr(c, "verified", False),
                 )
                 db_candidates.append(db_c)
+
             self.task_candidate_repo.save_candidates(db, db_candidates)
             return db_candidates
+
         except Exception as e:
             raise wrap_external_error(e, DatabaseError, "Failed to save task candidates")

@@ -1,4 +1,5 @@
 # app/notion/mapping_storage/feedback.py
+
 from typing import List, Optional
 
 from sqlalchemy.orm import Session
@@ -16,6 +17,7 @@ class TimestampMixin:
 
 class FeedbackLog(db.Model, TimestampMixin):
     __tablename__ = "notion_feedback_logs"
+
     id = db.Column(db.Integer, primary_key=True)
     user_id = db.Column(db.Integer, db.ForeignKey("users.id"), nullable=False)
     notion_db_id = db.Column(db.String, nullable=False)
@@ -25,23 +27,29 @@ class FeedbackLog(db.Model, TimestampMixin):
 
 
 class FeedbackRepository(AbstractRepository):
-    @staticmethod
-    def save_feedback(db: Session, log: FeedbackLog) -> None:
-        if db is None:
-            return
-        with db.begin(nested=True):
-            db.add(log)
 
     @staticmethod
-    def get_all_feedback(db: Optional[Session] = None, limit: Optional[int] = None, offset: int = 0) -> List[
-        FeedbackLog]:
-        if db is None:
-            return []
+    def save_feedback(db: Session, log: FeedbackLog) -> None:
+
+        try:
+            with db.begin(nested=True):
+                db.add(log)
+        except Exception as e:
+            raise wrap_external_error(e, DatabaseError, "Failed to save feedback log")
+
+    @staticmethod
+    def get_all_feedback(
+        db: Optional[Session] = None,
+        limit: Optional[int] = None,
+        offset: int = 0
+    ) -> List[FeedbackLog]:
+
         try:
             query = db.query(FeedbackLog)
             if limit is not None:
                 query = query.offset(offset).limit(limit)
             return query.all()
+
         except Exception as e:
             raise wrap_external_error(e, DatabaseError, "Failed to retrieve feedback logs")
 
@@ -50,15 +58,22 @@ class FeedbackService:
     def __init__(self, repo: FeedbackRepository):
         self.repo = repo
 
-    def log_feedback(self, db: Optional[Session], user_id: int, notion_db_id: str, notion_field: str,
-                     corrected_concept: str, feedback_text: Optional[str] = None) -> None:
-        if db is None:
-            return
+    def log_feedback(
+        self,
+        db: Optional[Session],
+        user_id: int,
+        notion_db_id: str,
+        notion_field: str,
+        corrected_concept: str,
+        feedback_text: Optional[str] = None
+    ) -> None:
+
         log = FeedbackLog(
             user_id=user_id,
             notion_db_id=notion_db_id,
             notion_field=notion_field,
             corrected_concept=corrected_concept,
-            feedback_text=feedback_text
+            feedback_text=feedback_text,
         )
+
         self.repo.save_feedback(db, log)
